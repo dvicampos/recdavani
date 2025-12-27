@@ -1,12 +1,11 @@
 const $ = (q) => document.querySelector(q);
 
-// UI (si falta alguno, no debe romper)
 const roomInput = $("#roomInput");
 const joinBtn = $("#joinBtn");
 const copyBtn = $("#copyBtn");
+
 const camBtn = $("#camBtn");
-const screenBtn = $("#screenBtn");
-const presentBtn = $("#presentBtn"); // puede no existir en HTML viejo
+const screenBtn = $("#screenBtn"); // <-- lo usaremos como "Presentar"
 const stopBtn = $("#stopBtn");
 const muteBtn = $("#muteBtn");
 
@@ -14,7 +13,7 @@ const localVideo = $("#localVideo");
 const remotes = $("#remotes");
 const statusEl = $("#status");
 
-function setStatus(t) { if (statusEl) statusEl.textContent = t || ""; }
+function setStatus(t){ if (statusEl) statusEl.textContent = t || ""; }
 function randId(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 
 const clientId = randId();
@@ -26,7 +25,6 @@ if (localVideo) {
   localVideo.playsInline = true;
 }
 
-// Helpers
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -35,28 +33,10 @@ function isMobile() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 function supportsScreenShare() {
-  // localhost cuenta como secure context aunque sea http
   return !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
 }
-function mobileShareMessage() {
-  return isIOS()
-    ? "En iPhone/iPad la web no permite compartir pantalla. Usa “Presentar” (cámara trasera) o entra desde laptop."
-    : "En web móvil normalmente no hay compartir pantalla con audio de sistema. Usa “Presentar” (cámara trasera) o entra desde laptop.";
-}
 
-// ICE servers (STUN)
-const iceConfig = {
-  iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }]
-};
-
-// ✅ Solo deshabilitar pantalla si NO hay soporte o si es iOS.
-// (No la apagues solo por ser mobile; hay tablets/Android raros, y en laptop nunca debe apagarse.)
-if (screenBtn) {
-  if (!supportsScreenShare() || isIOS()) {
-    screenBtn.disabled = true;
-    screenBtn.title = mobileShareMessage();
-  }
-}
+const iceConfig = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
 
 // ===== WS =====
 let ws = null;
@@ -68,7 +48,7 @@ function connectWS(){
   ws = new WebSocket(`${proto}://${location.host}`);
 
   ws.onopen = () => {
-    setStatus(`✅ Conectado • ${clientId.slice(0,8)}`);
+    setStatus(`✅ Conectado • ${clientId.slice(0,8)} • room ${roomId}`);
     wsSend({ type:"join", roomId, clientId });
   };
 
@@ -80,17 +60,8 @@ function connectWS(){
       for (const pid of msg.peers) await forceOffer(pid);
       return;
     }
-
-    if (msg.type === "peer-joined") {
-      await ensurePeer(msg.clientId);
-      return;
-    }
-
-    if (msg.type === "peer-left") {
-      removePeer(msg.clientId);
-      return;
-    }
-
+    if (msg.type === "peer-joined") { await ensurePeer(msg.clientId); return; }
+    if (msg.type === "peer-left") { removePeer(msg.clientId); return; }
     if (msg.type === "signal") {
       await ensurePeer(msg.from);
       await onSignal(msg.from, msg.data);
@@ -111,15 +82,13 @@ async function setLocalPreview(stream){
   if (!localVideo) return;
   localVideo.srcObject = stream || null;
   if (stream) {
-    localVideo.onloadedmetadata = async () => {
-      try { await localVideo.play(); } catch {}
-    };
+    localVideo.onloadedmetadata = async () => { try { await localVideo.play(); } catch {} };
   }
 }
 
-async function startCamera(opts = { preferBack:false }) {
+async function startCamera(preferBack=false){
   const constraints = {
-    video: opts.preferBack
+    video: preferBack
       ? { facingMode: { ideal: "environment" }, width:{ideal:1280}, height:{ideal:720} }
       : { width:{ideal:1280}, height:{ideal:720} },
     audio: true
@@ -129,13 +98,14 @@ async function startCamera(opts = { preferBack:false }) {
   localStream = camStream;
 
   if (isMuted) localStream.getAudioTracks().forEach(t => (t.enabled = false));
+
   await setLocalPreview(localStream);
   await replaceTracksAll();
 
-  setStatus(opts.preferBack ? "📡 Presentando (cámara trasera)." : "🎥 Cámara/mic listos.");
+  setStatus(preferBack ? "📱 Presentando (cámara trasera + mic)." : "🎥 Cámara + mic listos.");
 }
 
-async function startScreen(){
+async function startScreenDesktop(){
   const display = await navigator.mediaDevices.getDisplayMedia({
     video: { frameRate:{ideal:30, max:60} },
     audio: true
@@ -144,7 +114,7 @@ async function startScreen(){
   const screenVideoTrack = display.getVideoTracks()[0] || null;
   const systemAudioTrack = display.getAudioTracks()[0] || null;
 
-  // Mic fallback / mix
+  // mic fallback / mix
   let micStream = null;
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
@@ -152,10 +122,8 @@ async function startScreen(){
       video: false
     });
   } catch { micStream = null; }
-
   const micTrack = micStream ? micStream.getAudioTracks()[0] : null;
 
-  // Mix system + mic (si existe)
   let mixedAudioTrack = null;
   if (systemAudioTrack || micTrack) {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -169,7 +137,6 @@ async function startScreen(){
       const micSource = ctx.createMediaStreamSource(new MediaStream([micTrack]));
       micSource.connect(dest);
     }
-
     mixedAudioTrack = dest.stream.getAudioTracks()[0] || null;
   }
 
@@ -181,31 +148,29 @@ async function startScreen(){
   localStream = newStream;
 
   if (!systemAudioTrack) setStatus("🖥️ Pantalla sin audio de sistema (fallback a mic).");
-  else setStatus("🖥️ Compartiendo pantalla + audio (si el navegador lo permite).");
+  else setStatus("🖥️ Pantalla + audio (si el navegador lo permite).");
 
   if (isMuted) localStream.getAudioTracks().forEach(t => (t.enabled = false));
+
   await setLocalPreview(localStream);
   await replaceTracksAll();
 
-  if (screenVideoTrack) screenVideoTrack.onended = async () => stopScreen(true);
+  if (screenVideoTrack) screenVideoTrack.onended = () => stopPresent();
 }
 
-async function stopScreen(silent=false){
-  if (screenStream) {
-    screenStream.getTracks().forEach(t => t.stop());
-    screenStream = null;
-  }
+async function stopPresent(){
+  if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
   if (camStream) {
     localStream = camStream;
     if (isMuted) localStream.getAudioTracks().forEach(t => (t.enabled = false));
     await setLocalPreview(localStream);
     await replaceTracksAll();
-    if (!silent) setStatus("↩️ Volviste a cámara.");
+    setStatus("↩️ Volviste a cámara.");
   } else {
     localStream = null;
     await setLocalPreview(null);
     await replaceTracksAll();
-    if (!silent) setStatus("⛔ Sin stream.");
+    setStatus("⛔ Sin stream.");
   }
 }
 
@@ -223,17 +188,30 @@ async function stopAll(){
 function toggleMute(){
   isMuted = !isMuted;
   if (localStream) localStream.getAudioTracks().forEach(t => (t.enabled = !isMuted));
-
-  // ✅ No romper si no existe el span
-  const icon = muteBtn ? muteBtn.querySelector(".dock__i") : null;
-  if (icon) icon.textContent = isMuted ? "🔊" : "🔇";
-  else if (muteBtn) muteBtn.textContent = isMuted ? "Unmute" : "Mute";
-
   setStatus(isMuted ? "🔇 Mute ON" : "🔊 Mute OFF");
+}
+
+// ===== Present logic (THE FIX) =====
+async function startPresentSmart(){
+  // Mobile web: screen share no está (o iOS lo bloquea); usa cámara trasera.
+  if (isMobile() || isIOS() || !supportsScreenShare()) {
+    setStatus("📱 Móvil: usando Presentar (cámara trasera). Pantalla real no está disponible en web móvil.");
+    return startCamera(true);
+  }
+
+  // Desktop: intenta pantalla
+  try {
+    return await startScreenDesktop();
+  } catch (e) {
+    console.warn(e);
+    setStatus("⚠️ No se pudo compartir pantalla. Usando cámara como fallback.");
+    return startCamera(false);
+  }
 }
 
 // ===== WebRTC (Perfect Negotiation) =====
 const peers = new Map();
+// { pc, polite, makingOffer, ignoreOffer, vSender, aSender, remoteStream, remoteEl, cardEl, stEl }
 
 function isPoliteFor(peerId){
   return clientId.localeCompare(peerId) > 0;
@@ -259,13 +237,12 @@ function createRemoteCard(peerId){
   vid.className = "remoteVideo";
   vid.autoplay = true;
   vid.playsInline = true;
-  vid.muted = true; // autoplay safe
+  vid.muted = true; // autoplay policy
 
   const actions = document.createElement("div");
   actions.className = "remoteActions";
 
   const listenBtn = document.createElement("button");
-  listenBtn.className = "btn btn--ghost";
   listenBtn.textContent = "🔊 Escuchar";
   listenBtn.onclick = async () => {
     try {
@@ -277,8 +254,7 @@ function createRemoteCard(peerId){
         vid.muted = true;
         listenBtn.textContent = "🔊 Escuchar";
         listenBtn.onclick = async () => {
-          try { vid.muted = false; vid.volume = 1; await vid.play(); listenBtn.textContent = "🔇 Silenciar"; }
-          catch {}
+          try { vid.muted = false; await vid.play(); } catch {}
         };
       };
     } catch {
@@ -292,7 +268,7 @@ function createRemoteCard(peerId){
   card.appendChild(vid);
   card.appendChild(actions);
 
-  if (remotes) remotes.appendChild(card);
+  remotes && remotes.appendChild(card);
 
   return { cardEl: card, remoteEl: vid, stEl: right };
 }
@@ -324,9 +300,7 @@ async function ensurePeer(peerId){
   pc.ontrack = (ev) => {
     st.remoteStream.addTrack(ev.track);
     st.remoteEl.srcObject = st.remoteStream;
-    st.remoteEl.onloadedmetadata = async () => {
-      try { await st.remoteEl.play(); } catch {}
-    };
+    st.remoteEl.onloadedmetadata = async () => { try { await st.remoteEl.play(); } catch {} };
   };
 
   pc.onicecandidate = (ev) => {
@@ -400,6 +374,7 @@ async function replaceTracks(peerId){
   if (!st) return;
   const v = localStream ? localStream.getVideoTracks()[0] : null;
   const a = localStream ? localStream.getAudioTracks()[0] : null;
+
   try {
     if (st.vSender) await st.vSender.replaceTrack(v || null);
     if (st.aSender) await st.aSender.replaceTrack(a || null);
@@ -421,6 +396,7 @@ function removePeer(peerId){
 // ===== Room =====
 function joinRoom(newRoom){
   roomId = (newRoom || "demo").trim() || "demo";
+
   const url = new URL(location.href);
   url.searchParams.set("room", roomId);
   history.replaceState(null, "", url.toString());
@@ -439,36 +415,15 @@ function copyRoomLink(){
   setStatus("🔗 Link copiado.");
 }
 
-// ===== Events (con checks para no romper) =====
+// ===== Events =====
 joinBtn && (joinBtn.onclick = () => joinRoom(roomInput ? roomInput.value : roomId));
 copyBtn && (copyBtn.onclick = () => copyRoomLink());
 
-camBtn && (camBtn.onclick = async () => {
-  try { await startCamera({ preferBack:false }); }
-  catch { setStatus("❌ No se pudo abrir cámara/mic (permisos)."); }
-});
-
-screenBtn && (screenBtn.onclick = async () => {
-  if (screenBtn.disabled) {
-    setStatus(mobileShareMessage());
-    alert(mobileShareMessage());
-    return;
-  }
-  try { await startScreen(); }
-  catch {
-    setStatus("❌ No se pudo compartir pantalla.");
-    alert("No se pudo compartir pantalla. Prueba en Chrome/Edge desktop y acepta permisos.");
-  }
-});
-
-presentBtn && (presentBtn.onclick = async () => {
-  try { await startCamera({ preferBack:true }); }
-  catch { setStatus("❌ No se pudo abrir cámara trasera."); }
-});
-
-stopBtn && (stopBtn.onclick = async () => stopAll());
+camBtn && (camBtn.onclick = () => startCamera(false).catch(() => setStatus("❌ Permisos cámara/mic.")));
+screenBtn && (screenBtn.onclick = () => startPresentSmart().catch(() => setStatus("❌ No se pudo presentar.")));
+stopBtn && (stopBtn.onclick = () => stopAll());
 muteBtn && (muteBtn.onclick = () => toggleMute());
 
 // Boot
 joinRoom(roomId);
-if (isMobile()) setStatus("📱 Móvil: usa “Presentar” (cámara trasera).");
+if (isMobile()) setStatus("📱 Móvil: Presentar = cámara trasera. Pantalla real en web móvil no existe hoy.");
