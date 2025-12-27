@@ -6,41 +6,123 @@
   <title>Mini Meet - WebRTC</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <header class="topbar">
-    <div class="brand">Mini Meet</div>
 
-    <div class="room">
-      <span class="label">Room:</span>
-      <input id="roomInput" class="input" placeholder="ej: demo" />
-      <button id="joinBtn" class="btn">Entrar</button>
-      <button id="copyBtn" class="btn btn-ghost">Copiar link</button>
+<body>
+  <!-- Background blobs -->
+  <div class="bg">
+    <div class="blob blob--a"></div>
+    <div class="blob blob--b"></div>
+    <div class="blob blob--c"></div>
+    <div class="noise"></div>
+  </div>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand__mark">MM</div>
+      <div class="brand__text">
+        <div class="brand__name">Mini Meet</div>
+        <div class="brand__sub">WebRTC • ultra light</div>
+      </div>
+    </div>
+
+    <div class="roombar">
+      <div class="chip">
+        <span class="chip__label">Room</span>
+        <input id="roomInput" class="roombar__input" placeholder="ej: demo" />
+      </div>
+
+      <button id="joinBtn" class="btn btn--primary">
+        <span class="btn__icon">↪</span>
+        Entrar
+      </button>
+
+      <button id="copyBtn" class="btn btn--ghost">
+        <span class="btn__icon">🔗</span>
+        Copiar link
+      </button>
     </div>
   </header>
 
-  <main class="grid">
-    <section class="panel">
-      <h2>Tu preview</h2>
+  <!-- App -->
+  <main class="app">
+    <!-- Left: Stage -->
+    <section class="stage">
+      <div class="stage__header">
+        <div class="title">
+          <h1 class="title__h">Tu sala</h1>
+          <p class="title__p">Comparte cámara o pantalla. Audio se habilita con “Escuchar” en cada tile remoto.</p>
+        </div>
 
-      <video id="localVideo" class="video" autoplay playsinline muted></video>
-
-      <div class="controls">
-        <button id="camBtn" class="btn">Iniciar cámara</button>
-        <button id="screenBtn" class="btn">Compartir pantalla + audio</button>
-        <button id="stopBtn" class="btn btn-danger">Detener</button>
-        <button id="muteBtn" class="btn btn-ghost">Mute</button>
+        <div class="statusPill" title="Estado de señalización / WebRTC">
+          <span class="dot"></span>
+          <span id="status" class="statusPill__text">Listo</span>
+        </div>
       </div>
 
-      <p class="hint">
-        Tip: en Chrome/Edge, al compartir pantalla puede salir “Compartir audio”.
-      </p>
-      <p class="status" id="status"></p>
+      <!-- Local tile -->
+      <div class="tile tile--local">
+        <div class="tile__top">
+          <div class="badge badge--local">Tú</div>
+          <div class="tile__meta">
+            <span class="meta meta--hint">Preview</span>
+          </div>
+        </div>
+
+        <video id="localVideo" class="tile__video" autoplay playsinline muted></video>
+
+        <!-- Floating Controls -->
+        <div class="dock" role="group" aria-label="Controles">
+          <button id="camBtn" class="dock__btn" title="Iniciar cámara">
+            <span class="dock__i">📷</span>
+            <span class="dock__t">Cámara</span>
+          </button>
+
+          <button id="screenBtn" class="dock__btn" title="Compartir pantalla + audio">
+            <span class="dock__i">🖥️</span>
+            <span class="dock__t">Pantalla</span>
+          </button>
+
+          <button id="muteBtn" class="dock__btn dock__btn--ghost" title="Mute / Unmute">
+            <span class="dock__i">🔇</span>
+            <span class="dock__t">Mute</span>
+          </button>
+
+          <button id="stopBtn" class="dock__btn dock__btn--danger" title="Detener todo">
+            <span class="dock__i">⛔</span>
+            <span class="dock__t">Detener</span>
+          </button>
+        </div>
+
+        <div class="tile__bottom">
+          <div class="note">
+            <span class="note__i">💡</span>
+            <span class="note__t">
+              Para audio del sistema: elige <b>“Chrome Tab”</b> y activa <b>“Share audio”</b>.
+            </span>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="panel">
-      <h2>Remotos</h2>
-      <div id="remotes" class="remotes"></div>
-    </section>
+    <!-- Right: Remote grid -->
+    <aside class="sidebar">
+      <div class="sidebar__header">
+        <h2 class="sidebar__h">Participantes</h2>
+        <p class="sidebar__p">Tus tiles remotos aparecen aquí. Puedes “Escuchar” cada uno.</p>
+      </div>
+
+      <div id="remotes" class="remoteGrid"></div>
+
+      <div class="sidebar__footer">
+        <div class="cardTip">
+          <div class="cardTip__h">Tip de calidad</div>
+          <div class="cardTip__p">
+            Si en redes móviles ves <b>ice: failed</b>, necesitarás TURN para máxima conectividad.
+          </div>
+        </div>
+      </div>
+    </aside>
   </main>
 
   <script src="app.js"></script>
