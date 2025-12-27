@@ -41,7 +41,7 @@ wss.on("connection", (ws) => {
 
       const room = getRoom(roomId);
 
-      // peers existentes antes de meter al nuevo
+      // peers existentes ANTES de meter al nuevo
       const peers = Array.from(room.keys());
 
       room.set(clientId, ws);
@@ -65,7 +65,6 @@ wss.on("connection", (ws) => {
     if (msg.type === "signal") {
       const toId = msg.to;
       if (!toId) return;
-
       const target = room.get(toId);
       if (!target) return;
 
@@ -92,14 +91,4 @@ wss.on("connection", (ws) => {
 });
 
 const PORT = process.env.PORT || 3000;
-
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`❌ Puerto ${PORT} en uso. Prueba: PowerShell -> $env:PORT=3001; npm start`);
-    process.exit(1);
-  }
-  console.error("❌ Error server:", err);
-  process.exit(1);
-});
-
 server.listen(PORT, () => console.log(`✅ http://localhost:${PORT}`));
