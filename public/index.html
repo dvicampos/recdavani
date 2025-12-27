@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini Meet - WebRTC</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Mini Meet</div>
+
+    <div class="room">
+      <span class="label">Room:</span>
+      <input id="roomInput" class="input" placeholder="ej: demo" />
+      <button id="joinBtn" class="btn">Entrar</button>
+      <button id="copyBtn" class="btn btn-ghost">Copiar link</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel">
+      <h2>Tu preview</h2>
+
+      <video id="localVideo" class="video" autoplay playsinline muted></video>
+
+      <div class="controls">
+        <button id="camBtn" class="btn">Iniciar cámara</button>
+        <button id="screenBtn" class="btn">Compartir pantalla + audio</button>
+        <button id="stopBtn" class="btn btn-danger">Detener</button>
+        <button id="muteBtn" class="btn btn-ghost">Mute</button>
+      </div>
+
+      <p class="hint">
+        Tip: en Chrome/Edge, al compartir pantalla puede salir “Compartir audio”.
+      </p>
+      <p class="status" id="status"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Remotos</h2>
+      <div id="remotes" class="remotes"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
