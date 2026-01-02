@@ -1,10 +1,4 @@
-/* ============================
-   server.js (EDITADO) – FULL
-   - peers: ahora manda {id,name}
-   - rename, chat, reaction
-   - ping/pong
-   ============================ */
-
+// server.js
 const path = require("path");
 const express = require("express");
 const http = require("http");
@@ -12,6 +6,7 @@ const WebSocket = require("ws");
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
+app.use(express.json({ limit: "2mb" }));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -30,31 +25,153 @@ function getRoom(roomId) {
   return rooms.get(roomId);
 }
 
-function broadcast(room, data, exceptId = null) {
-  for (const [pid, info] of room.entries()) {
-    if (exceptId && pid === exceptId) continue;
+function broadcast(room, data, exceptClientId = null) {
+  for (const [cid, info] of room.entries()) {
+    if (exceptClientId && cid === exceptClientId) continue;
     safeSend(info.ws, data);
   }
 }
 
+function listPeers(room, exceptClientId) {
+  const peers = [];
+  for (const [cid, info] of room.entries()) {
+    if (cid === exceptClientId) continue;
+    peers.push({ id: cid, name: info.name || cid.slice(0, 8) });
+  }
+  return peers;
+}
+
+/* =========================
+   Claude API: Transcript -> resumen
+   ========================= */
+app.post("/api/ai/summary", async (req, res) => {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        error: "Falta ANTHROPIC_API_KEY en variables de entorno.",
+      });
+    }
+
+    const { roomId, transcript, language } = req.body || {};
+    const lang = language || "es-MX";
+
+    const transcriptText = String(transcript || "").trim();
+    if (transcriptText.length < 20) {
+      return res.status(400).json({ error: "Transcript vacío o muy corto." });
+    }
+
+    // Modelo: usa el que tengas disponible en tu cuenta.
+    // En docs aparece un ejemplo de modelo; tú puedes cambiarlo por env.
+    const model = process.env.CLAUDE_MODEL || "claude-sonnet-4-5-20250929";
+
+    // Pedimos JSON estricto para poder parsear sin drama.
+    const prompt = `
+Eres un asistente que transforma transcripciones en una minuta útil.
+Devuelve SOLO JSON válido (sin markdown, sin texto extra).
+Idioma: ${lang}
+
+TRANSCRIPCIÓN (puede contener marcas de tiempo):
+${transcriptText}
+
+Devuelve este JSON con este esquema:
+{
+  "title": string,
+  "summary": string,
+  "highlights": [string],
+  "decisions": [string],
+  "action_items": [{"who": string, "task": string, "due": string|null}],
+  "topics": [{"topic": string, "bullets": [string]}],
+  "open_questions": [string],
+  "next_steps": [string],
+  "keywords": [string]
+}
+
+Reglas:
+- Sé conciso pero accionable.
+- Si no hay "who" claro en acciones, usa "Equipo".
+- Si no hay fechas, "due": null.
+`.trim();
+
+    // Llamada Claude Messages API:
+    // POST /v1/messages con headers anthropic-version y X-Api-Key. :contentReference[oaicite:1]{index=1}
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "X-Api-Key": apiKey,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1200,
+        temperature: 0.2,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      return res.status(resp.status).json({
+        error: "Claude API error",
+        details: data,
+      });
+    }
+
+    const text =
+      (data.content || [])
+        .map((c) => (c && c.type === "text" ? c.text : ""))
+        .join("")
+        .trim() || "";
+
+    let parsed = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // Si por alguna razón no regresa JSON perfecto, devolvemos raw.
+      parsed = null;
+    }
+
+    res.json({
+      ok: true,
+      roomId: roomId || null,
+      raw: text,
+      json: parsed,
+      model: data.model,
+      usage: data.usage || null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Server error", details: String(e?.message || e) });
+  }
+});
+
+/* =========================
+   WS signaling + broadcast
+   ========================= */
 wss.on("connection", (ws) => {
   ws._roomId = null;
   ws._clientId = null;
 
   ws.on("message", (raw) => {
     let msg;
-    try { msg = JSON.parse(raw.toString()); } catch { return; }
-
-    // ping/pong
-    if (msg.type === "ping") {
-      safeSend(ws, { type: "pong", t: msg.t || Date.now() });
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
       return;
     }
 
+    // Heartbeat
+    if (msg.type === "ping") {
+      safeSend(ws, { type: "pong", t: Date.now() });
+      return;
+    }
+
+    // Join
     if (msg.type === "join") {
       const roomId = String(msg.roomId || "lobby");
       const clientId = String(msg.clientId || "");
-      const name = String(msg.name || "").trim().slice(0, 24) || clientId.slice(0, 8);
+      const name = String(msg.name || "").trim().slice(0, 24);
+
       if (!clientId) return;
 
       ws._roomId = roomId;
@@ -62,20 +179,15 @@ wss.on("connection", (ws) => {
 
       const room = getRoom(roomId);
 
-      // peers existentes antes de meter al nuevo
-      const peers = Array.from(room.entries()).map(([id, info]) => ({ id, name: info.name }));
+      const peers = listPeers(room, clientId);
+      room.set(clientId, { ws, name: name || `Guest-${clientId.slice(0, 4)}` });
 
-      room.set(clientId, { ws, name });
-
-      // manda peers al nuevo
       safeSend(ws, { type: "peers", peers });
 
-      // avisa a todos
-      broadcast(room, { type: "peer-joined", clientId, name }, clientId);
+      broadcast(room, { type: "peer-joined", clientId, name: room.get(clientId).name }, clientId);
       return;
     }
 
-    // A partir de aquí requiere room + client
     const roomId = ws._roomId;
     const fromId = ws._clientId;
     if (!roomId || !fromId) return;
@@ -83,45 +195,55 @@ wss.on("connection", (ws) => {
     const room = rooms.get(roomId);
     if (!room) return;
 
-    // rename
+    // Rename
     if (msg.type === "rename") {
       const info = room.get(fromId);
       if (!info) return;
-      const name = String(msg.name || "").trim().slice(0, 24) || fromId.slice(0, 8);
-      info.name = name;
-      broadcast(room, { type: "peer-meta", clientId: fromId, name });
+      const newName = String(msg.name || "").trim().slice(0, 24);
+      if (!newName) return;
+
+      info.name = newName;
+      broadcast(room, { type: "peer-meta", clientId: fromId, name: newName });
       return;
     }
 
-    // chat broadcast
+    // Chat / reaction / caption (broadcast)
     if (msg.type === "chat") {
       const info = room.get(fromId);
-      const text = String(msg.text || "").slice(0, 240);
+      const text = String(msg.text || "").trim().slice(0, 400);
+      if (!text) return;
+
       broadcast(room, {
         type: "chat",
         from: fromId,
         name: info?.name || fromId.slice(0, 8),
         text,
-        ts: Date.now()
+        ts: Date.now(),
       });
       return;
     }
 
-    // reaction broadcast
     if (msg.type === "reaction") {
+      broadcast(room, { type: "reaction", from: fromId, emoji: msg.emoji || "✨" });
+      return;
+    }
+
+    if (msg.type === "caption") {
       const info = room.get(fromId);
-      const emoji = String(msg.emoji || "✨").slice(0, 6);
+      const text = String(msg.text || "").trim().slice(0, 220);
+      if (!text) return;
+
       broadcast(room, {
-        type: "reaction",
+        type: "caption",
         from: fromId,
         name: info?.name || fromId.slice(0, 8),
-        emoji,
-        ts: Date.now()
+        text,
+        ts: Date.now(),
       });
       return;
     }
 
-    // señalización
+    // WebRTC signaling
     if (msg.type === "signal") {
       const toId = msg.to;
       if (!toId) return;
@@ -130,7 +252,6 @@ wss.on("connection", (ws) => {
       if (!target) return;
 
       safeSend(target.ws, { type: "signal", from: fromId, data: msg.data });
-      return;
     }
   });
 
@@ -143,7 +264,6 @@ wss.on("connection", (ws) => {
     if (!room) return;
 
     room.delete(clientId);
-
     broadcast(room, { type: "peer-left", clientId });
 
     if (room.size === 0) rooms.delete(roomId);

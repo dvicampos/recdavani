@@ -68,6 +68,10 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
+  function nowHHMM(ts = Date.now()){
+    return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
   // ===== Device helpers =====
   function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -103,8 +107,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (localVideo) {
     localVideo.muted = true;
     localVideo.playsInline = true;
-
-    // Doble click = fullscreen
     localVideo.addEventListener("dblclick", async () => {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -119,6 +121,152 @@ document.addEventListener("DOMContentLoaded", () => {
       { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }
     ]
   };
+
+  // =========================================================
+  // 🔥 Transcript accumulator (para TXT + IA)
+  // =========================================================
+  const transcriptLines = []; // {ts,name,text}
+  const TRANSCRIPT_MAX_CHARS = 30000;
+
+  function buildTranscriptText(){
+    return transcriptLines.map(l => `[${nowHHMM(l.ts)}] ${l.name}: ${l.text}`).join("\n");
+  }
+
+  function addTranscriptLine({ ts, name, text }){
+    const clean = String(text || "").trim();
+    if (!clean) return;
+
+    transcriptLines.push({
+      ts: ts || Date.now(),
+      name: String(name || "Alguien").trim().slice(0,24),
+      text: clean
+    });
+
+    // recorta por tamaño
+    let joined = buildTranscriptText();
+    if (joined.length > TRANSCRIPT_MAX_CHARS) {
+      while (joined.length > TRANSCRIPT_MAX_CHARS && transcriptLines.length > 10) {
+        transcriptLines.shift();
+        joined = buildTranscriptText();
+      }
+    }
+  }
+
+  function exportTranscriptTxt(){
+    const txt = buildTranscriptText().trim();
+    if (!txt) return toast("⚠️ No hay transcript aún (activa CC)");
+    const blob = new Blob([txt], { type: "text/plain;charset=utf-8" });
+    downloadBlob(blob, `transcript_${roomId}_${Date.now()}.txt`);
+    toast("📄 Transcript descargado");
+  }
+
+  // =========================================================
+  // 🤖 AI Modal + Claude summary (usa /api/ai/summary)
+  // =========================================================
+  let aiModal = null;
+  let aiBusy = false;
+
+  function ensureAIModal(){
+    if (aiModal) return aiModal;
+
+    const modal = document.createElement("div");
+    modal.className = "mm-modal";
+    modal.innerHTML = `
+      <div class="mm-modal__card">
+        <div class="mm-modal__head">
+          <div class="mm-modal__title">🤖 Resumen IA</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="mm-modal__btn" data-act="copy">Copiar</button>
+            <button class="mm-modal__btn" data-act="close">Cerrar</button>
+          </div>
+        </div>
+        <div class="mm-modal__body">
+          <div class="mm-pre" id="mmAiOut">Listo.</div>
+        </div>
+      </div>
+    `;
+    modal.addEventListener("click", async (e) => {
+      if (e.target === modal) modal.classList.remove("show");
+      const b = e.target.closest("button");
+      if (!b) return;
+      const act = b.getAttribute("data-act");
+      if (act === "close") modal.classList.remove("show");
+      if (act === "copy") {
+        const out = modal.querySelector("#mmAiOut");
+        try { await navigator.clipboard.writeText(out?.textContent || ""); toast("✅ Copiado"); } catch {}
+      }
+    });
+
+    document.body.appendChild(modal);
+    aiModal = modal;
+    return aiModal;
+  }
+
+  function showAIModal(text){
+    const modal = ensureAIModal();
+    const out = modal.querySelector("#mmAiOut");
+    if (out) out.textContent = String(text || "");
+    modal.classList.add("show");
+  }
+
+  async function runAISummary(){
+    if (aiBusy) return;
+    const transcript = buildTranscriptText().trim();
+    if (!transcript) return toast("⚠️ No hay transcript aún (activa CC)");
+
+    aiBusy = true;
+    toast("🤖 Generando resumen…", 2200);
+
+    try {
+      const resp = await fetch("/api/ai/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId, transcript, language: "es-MX" })
+      });
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        showAIModal(`❌ Error IA\n\n${JSON.stringify(data, null, 2)}`);
+        return;
+      }
+
+      if (data.json) {
+        const r = data.json;
+        const pretty = [
+          `Título: ${r.title || "(sin título)"}`,
+          ``,
+          `Resumen:`,
+          `${r.summary || ""}`,
+          ``,
+          `Highlights:`,
+          ...(r.highlights || []).map(x => `- ${x}`),
+          ``,
+          `Decisiones:`,
+          ...(r.decisions || []).map(x => `- ${x}`),
+          ``,
+          `Acciones:`,
+          ...(r.action_items || []).map(a => `- [${a.who || "Equipo"}] ${a.task || ""}${a.due ? ` (due: ${a.due})` : ""}`),
+          ``,
+          `Preguntas abiertas:`,
+          ...(r.open_questions || []).map(x => `- ${x}`),
+          ``,
+          `Siguientes pasos:`,
+          ...(r.next_steps || []).map(x => `- ${x}`),
+          ``,
+          `Keywords: ${(r.keywords || []).join(", ")}`
+        ].join("\n");
+        showAIModal(pretty);
+      } else {
+        showAIModal(data.raw || "✅ OK");
+      }
+
+      toast("✅ Resumen listo");
+    } catch (e) {
+      showAIModal(`❌ Error\n\n${String(e?.message || e)}`);
+    } finally {
+      aiBusy = false;
+    }
+  }
 
   // ===== Inject WOW styles =====
   function injectWowStyles() {
@@ -241,6 +389,51 @@ document.addEventListener("DOMContentLoaded", () => {
       .mm-high__mini:hover{background: rgba(255,255,255,.09)}
       .mm-high__empty{color: rgba(255,255,255,.65); padding: 12px; text-align:center;}
 
+      /* AI modal */
+      .mm-modal{
+        position: fixed; inset: 0; z-index: 10000;
+        display: none; align-items: center; justify-content: center;
+        background: rgba(0,0,0,.55);
+        backdrop-filter: blur(6px);
+      }
+      .mm-modal.show{display:flex}
+      .mm-modal__card{
+        width: min(920px, calc(100vw - 24px));
+        max-height: min(84vh, 720px);
+        overflow: auto;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,.14);
+        background: rgba(0,0,0,.35);
+        box-shadow: 0 25px 80px rgba(0,0,0,.6);
+      }
+      .mm-modal__head{
+        position: sticky; top: 0;
+        padding: 12px 14px;
+        display:flex; align-items:center; justify-content: space-between;
+        gap: 10px;
+        border-bottom: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.30);
+        backdrop-filter: blur(10px);
+      }
+      .mm-modal__title{font: 900 14px ui-sans-serif, system-ui; color: rgba(255,255,255,.92)}
+      .mm-modal__btn{
+        border: 1px solid rgba(255,255,255,.14);
+        background: rgba(255,255,255,.08);
+        color: rgba(255,255,255,.92);
+        border-radius: 12px;
+        padding: 8px 10px;
+        font-weight: 900;
+        cursor: pointer;
+      }
+      .mm-modal__body{padding: 12px 14px}
+      .mm-pre{
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font: 700 13px ui-sans-serif, system-ui;
+        color: rgba(255,255,255,.92);
+        line-height: 1.4;
+      }
+
       @media (max-width:520px){
         .mm-hud{left: 12px; right: 12px; width: calc(100vw - 24px); justify-content: space-between}
         .mm-hud__btn{flex:1; display:flex; justify-content:center}
@@ -268,6 +461,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function stopClientHeartbeat() {
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = null;
+  }
+
+  function scheduleReconnect() {
+    reconnectTry++;
+    const wait = Math.min(15000, 400 * Math.pow(2, reconnectTry));
+    toast(`🔁 Reintentando conexión… (${Math.round(wait / 1000)}s)`, 1400);
+    setTimeout(() => {
+      if (!wsWanted) return;
+      connectWS();
+    }, wait);
   }
 
   function connectWS() {
@@ -332,7 +535,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (msg.type === "caption") {
-        showCaption(msg.from, msg.name || msg.from.slice(0, 8), msg.text || "");
+        const who = msg.name || msg.from.slice(0, 8);
+        const text = msg.text || "";
+        showCaption(msg.from, who, text);
+        addTranscriptLine({ ts: msg.ts || Date.now(), name: who, text });
         return;
       }
 
@@ -350,20 +556,15 @@ document.addEventListener("DOMContentLoaded", () => {
     ws.onerror = () => setStatus("⚠️ Error WS");
   }
 
-  function scheduleReconnect() {
-    reconnectTry++;
-    const wait = Math.min(15000, 400 * Math.pow(2, reconnectTry));
-    toast(`🔁 Reintentando conexión… (${Math.round(wait / 1000)}s)`, 1400);
-    setTimeout(() => {
-      if (!wsWanted) return;
-      connectWS();
-    }, wait);
-  }
-
   // ===== Media =====
   let camStream = null;
-  let screenStream = null;
-  let localStream = null;
+  let screenStream = null;     // display stream original
+  let localStream = null;      // stream que se manda (cam o pantalla)
+  let usingScreen = false;
+
+  // extra para screen mix cleanup
+  let screenMicStream = null;
+  let screenAudioCtx = null;
 
   // mute + PTT
   let isMuted = false;
@@ -382,6 +583,16 @@ document.addEventListener("DOMContentLoaded", () => {
   function setAudioEnabled(on) {
     if (!localStream) return;
     localStream.getAudioTracks().forEach(t => (t.enabled = !!on));
+  }
+
+  function applyMutePolicy(){
+    if (pttEnabled) {
+      isMuted = true;
+      setAudioEnabled(false);
+      return;
+    }
+    if (isMuted) setAudioEnabled(false);
+    else setAudioEnabled(true);
   }
 
   async function startCamera(preferBack = false) {
@@ -420,21 +631,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (camStream) camStream.getTracks().forEach(t => t.stop());
-
     camStream = stream;
-    localStream = camStream;
 
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else {
-      if (isMuted) setAudioEnabled(false);
+    // si estás compartiendo pantalla, NO lo cambies; solo guarda cam para volver rápido
+    if (!usingScreen) {
+      localStream = camStream;
+      applyMutePolicy();
+      await setLocalPreview(localStream);
+      await replaceTracksAll();
     }
 
-    await setLocalPreview(localStream);
-    await replaceTracksAll();
-
-    setStatus(preferBack ? "📱 Presentando (cámara trasera + mic)." : "🎥 Cámara + mic listos.");
+    setStatus(preferBack ? "📱 Cámara trasera lista." : "🎥 Cámara lista.");
     toast(preferBack ? "📱 Cámara trasera" : "🎥 Cámara lista");
   }
 
@@ -444,6 +651,7 @@ document.addEventListener("DOMContentLoaded", () => {
       throw new Error("getDisplayMedia not available");
     }
 
+    // 1) display stream
     const display = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: { ideal: 30, max: 60 } },
       audio: true
@@ -452,72 +660,89 @@ document.addEventListener("DOMContentLoaded", () => {
     const screenVideoTrack = display.getVideoTracks()[0] || null;
     const systemAudioTrack = display.getAudioTracks()[0] || null;
 
-    let micStream = null;
+    // 2) mic stream para mezclar (si se puede)
+    screenMicStream = null;
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({
+      screenMicStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: false
       });
-    } catch { micStream = null; }
-    const micTrack = micStream ? micStream.getAudioTracks()[0] : null;
+    } catch { screenMicStream = null; }
 
+    const micTrack = screenMicStream ? screenMicStream.getAudioTracks()[0] : null;
+
+    // 3) mix (AudioContext) — IMPORTANT: guardamos ctx para cerrarlo en stopPresent
     let mixedAudioTrack = null;
-    if (systemAudioTrack || micTrack) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const dest = ctx.createMediaStreamDestination();
+    screenAudioCtx = null;
 
-      if (systemAudioTrack) {
-        const sysSource = ctx.createMediaStreamSource(new MediaStream([systemAudioTrack]));
-        sysSource.connect(dest);
+    try {
+      if (systemAudioTrack || micTrack) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        screenAudioCtx = ctx;
+
+        const dest = ctx.createMediaStreamDestination();
+
+        if (systemAudioTrack) {
+          const sysSource = ctx.createMediaStreamSource(new MediaStream([systemAudioTrack]));
+          sysSource.connect(dest);
+        }
+        if (micTrack) {
+          const micSource = ctx.createMediaStreamSource(new MediaStream([micTrack]));
+          micSource.connect(dest);
+        }
+        mixedAudioTrack = dest.stream.getAudioTracks()[0] || null;
       }
-      if (micTrack) {
-        const micSource = ctx.createMediaStreamSource(new MediaStream([micTrack]));
-        micSource.connect(dest);
-      }
-      mixedAudioTrack = dest.stream.getAudioTracks()[0] || null;
+    } catch {
+      mixedAudioTrack = systemAudioTrack || micTrack || null;
     }
 
+    // 4) new outbound stream (video + mixed audio)
     const newStream = new MediaStream();
     if (screenVideoTrack) newStream.addTrack(screenVideoTrack);
     if (mixedAudioTrack) newStream.addTrack(mixedAudioTrack);
 
+    // limpia screen anterior
     if (screenStream) screenStream.getTracks().forEach(t => t.stop());
-
     screenStream = display;
+
+    // activar screen
+    usingScreen = true;
     localStream = newStream;
 
-    if (!systemAudioTrack) setStatus("🖥️ Pantalla sin audio de sistema (fallback a mic).");
-    else setStatus("🖥️ Pantalla + audio (si el navegador lo permite).");
-
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else {
-      if (isMuted) setAudioEnabled(false);
-    }
-
+    applyMutePolicy();
     await setLocalPreview(localStream);
     await replaceTracksAll();
 
+    if (!systemAudioTrack) setStatus("🖥️ Pantalla (sin audio de sistema) + mic.");
+    else setStatus("🖥️ Pantalla + audio (si el navegador lo permite).");
+
+    // cuando el user stoppea share desde el browser
     if (screenVideoTrack) screenVideoTrack.onended = () => stopPresent();
     toast("🖥️ Compartiendo pantalla");
   }
 
+  function cleanupScreenMix(){
+    try { if (screenMicStream) screenMicStream.getTracks().forEach(t => t.stop()); } catch {}
+    screenMicStream = null;
+
+    try { if (screenAudioCtx) screenAudioCtx.close(); } catch {}
+    screenAudioCtx = null;
+  }
+
   async function stopPresent() {
+    // deja de usar screen
+    usingScreen = false;
+
     if (screenStream) {
-      screenStream.getTracks().forEach(t => t.stop());
+      try { screenStream.getTracks().forEach(t => t.stop()); } catch {}
       screenStream = null;
     }
+    cleanupScreenMix();
+
+    // volver a cam si existe, si no => null
     if (camStream) {
       localStream = camStream;
-
-      if (pttEnabled) {
-        isMuted = true;
-        setAudioEnabled(false);
-      } else if (isMuted) {
-        setAudioEnabled(false);
-      }
-
+      applyMutePolicy();
       await setLocalPreview(localStream);
       await replaceTracksAll();
       setStatus("↩️ Volviste a cámara.");
@@ -533,8 +758,12 @@ document.addEventListener("DOMContentLoaded", () => {
   async function stopAll() {
     if (!confirm("¿Detener cámara/pantalla y desconectar peers?")) return;
 
+    usingScreen = false;
+
     if (camStream) camStream.getTracks().forEach(t => t.stop());
     if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+    cleanupScreenMix();
+
     camStream = null; screenStream = null; localStream = null;
 
     await setLocalPreview(null);
@@ -551,7 +780,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pttEnabled) {
       disablePTT();
       isMuted = false;
-      setAudioEnabled(true);
+      applyMutePolicy();
       setStatus("🔊 Mute OFF");
       toast("🎙️ PTT OFF");
       updateMuteLabel();
@@ -560,7 +789,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     isMuted = !isMuted;
-    setAudioEnabled(!isMuted);
+    applyMutePolicy();
 
     setStatus(isMuted ? "🔇 Mute ON" : "🔊 Mute OFF");
     toast(isMuted ? "🔇 Mute" : "🔊 Unmute");
@@ -583,6 +812,9 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Abre el link con https (candadito). En móvil sin HTTPS no habrá permisos.");
       return;
     }
+
+    // toggle: si ya estás en screen, stop
+    if (usingScreen) return stopPresent();
 
     if (isMobile() || isIOS() || !supportsScreenShare()) {
       setStatus("📱 Móvil: Presentar = cámara trasera (web móvil no tiene compartir pantalla real).");
@@ -920,6 +1152,90 @@ document.addEventListener("DOMContentLoaded", () => {
     return { cardEl: card, remoteEl: vid, stEl: right, nameEl: left };
   }
 
+  // ===== DataChannel P2P: files (chunked + backpressure) =====
+  const fileRx = new Map();
+  const CHUNK = 16 * 1024;
+
+  async function waitBufferedLow(dc, limit = 2_000_000) {
+    // evita overflow: espera si bufferedAmount está alto
+    if (!dc) return;
+    while (dc.readyState === "open" && dc.bufferedAmount > limit) {
+      await new Promise(r => setTimeout(r, 25));
+    }
+  }
+
+  function setupDataChannel(peerId) {
+    const st = peers.get(peerId);
+    if (!st?.dc) return;
+
+    st.dc.binaryType = "arraybuffer";
+
+    st.dc.onopen = () => {
+      toast(`📎 DataChannel listo con ${st.name || peerId.slice(0,8)}`);
+    };
+
+    st.dc.onmessage = (ev) => {
+      if (typeof ev.data === "string") {
+        let m = null;
+        try { m = JSON.parse(ev.data); } catch { return; }
+
+        if (m.t === "file-meta") {
+          fileRx.set(peerId, { name: m.name, size: m.size, chunks: [], received: 0 });
+          toast(`📥 Recibiendo: ${m.name} (${Math.round(m.size / 1024)} KB)`);
+          return;
+        }
+
+        if (m.t === "file-done") {
+          const rx = fileRx.get(peerId);
+          if (!rx) return;
+
+          const blob = new Blob(rx.chunks);
+          downloadBlob(blob, rx.name || `file_${Date.now()}`);
+
+          toast(`✅ Archivo listo: ${rx.name}`);
+          fileRx.delete(peerId);
+          setStatus("✅ Recibido");
+          return;
+        }
+        return;
+      }
+
+      const rx = fileRx.get(peerId);
+      if (!rx) return;
+
+      rx.chunks.push(ev.data);
+      rx.received += ev.data.byteLength;
+
+      const pct = Math.min(100, Math.round((rx.received / rx.size) * 100));
+      setStatus(`📥 ${rx.name} • ${pct}%`);
+    };
+  }
+
+  async function sendFileToAll(file) {
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+
+    let sentTo = 0;
+    for (const [, st] of peers.entries()) {
+      if (!st?.dc || st.dc.readyState !== "open") continue;
+
+      try {
+        st.dc.send(JSON.stringify({ t: "file-meta", name: file.name, size: buf.byteLength }));
+
+        for (let off = 0; off < buf.byteLength; off += CHUNK) {
+          await waitBufferedLow(st.dc);
+          st.dc.send(buf.slice(off, off + CHUNK));
+        }
+
+        await waitBufferedLow(st.dc);
+        st.dc.send(JSON.stringify({ t: "file-done" }));
+        sentTo++;
+      } catch {}
+    }
+
+    toast(sentTo ? `📤 Enviado a ${sentTo}: ${file.name}` : "⚠️ No hay DataChannels listos");
+  }
+
   async function ensurePeer(peerId, name = null) {
     if (!peerId || peerId === clientId) return;
 
@@ -934,6 +1250,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const pc = new RTCPeerConnection(iceConfig);
 
+    // negotiated DC (ambos lados lo crean con id 0)
     const dc = pc.createDataChannel("mm-data", { negotiated: true, id: 0 });
 
     const ui = createRemoteCard(peerId, name);
@@ -1149,9 +1466,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "p" || e.key === "P") startPresentSmart().catch(() => {});
       if (e.key === "Escape") stopAll().catch(() => {});
 
-      // ⭐ Highlights
       if (e.key === "h" || e.key === "H") addHighlightPrompt();
       if (e.key === "l" || e.key === "L") toggleHighlightsPanel();
+      if (e.key === "t" || e.key === "T") exportTranscriptTxt();
     });
   }
 
@@ -1293,6 +1610,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       wsSend({ type: "caption", text });
       showCaption(clientId, nick, text);
+      addTranscriptLine({ ts: Date.now(), name: nick, text });
     };
 
     rec.onerror = () => {};
@@ -1326,15 +1644,13 @@ document.addEventListener("DOMContentLoaded", () => {
   let recOn = false;
   let recMime = "video/webm";
 
-  // Para cortar en clips: guardamos chunks con rangos de tiempo
   let recStartPerf = 0;
   let recLastEnd = 0;
   let recChunkMeta = []; // { start, end, blob }
 
-  // Highlights guardados
   let highlights = []; // { id, t, label }
-  const CLIP_PRE_MS = 5000;  // 5s antes
-  const CLIP_POST_MS = 8000; // 8s después
+  const CLIP_PRE_MS = 5000;
+  const CLIP_POST_MS = 8000;
 
   function pickMime(){
     return (
@@ -1372,7 +1688,6 @@ document.addEventListener("DOMContentLoaded", () => {
       recChunks.push(e.data);
       recChunkMeta.push({ start, end, blob: e.data });
 
-      // Si el panel está abierto, refresca “duración”
       if (highUI?.durEl && recOn) highUI.durEl.textContent = `REC ${fmtTime(end)}`;
     };
 
@@ -1383,13 +1698,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (highlights.length) {
         toast(`⭐ ${highlights.length} marca(s) lista(s) — abre 📑 para clips`, 2200);
-        // abre panel automáticamente si hay marcas
         openHighlightsPanel();
       }
     };
 
-    // Timeslice pequeño = clips más precisos
-    mr.start(400); // 400ms
+    mr.start(400);
     recOn = true;
 
     toast("🔴 REC ON");
@@ -1422,6 +1735,7 @@ document.addEventListener("DOMContentLoaded", () => {
     highlights.unshift({ id, t, label: cleanLabel || "Highlight" });
     toast(`⭐ Marca guardada (${fmtTime(t)})`);
     updateHighlightsPanel();
+    updateHUD();
   }
 
   function addHighlightPrompt(){
@@ -1437,22 +1751,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const chosen = [];
     for (const c of recChunkMeta) {
-      // overlap
       if (c.end >= start && c.start <= end) chosen.push(c.blob);
     }
     return { start, end, blobs: chosen };
   }
 
-  function buildClipBlob(tMs, label){
+  function buildClipBlob(tMs){
     if (!recChunkMeta.length) return null;
-    const { start, end, blobs } = getClipChunksFor(tMs);
+    const { blobs } = getClipChunksFor(tMs);
     if (!blobs.length) return null;
     return new Blob(blobs, { type: recMime });
   }
 
   function downloadClipFor(h){
     if (!recChunkMeta.length) return toast("⚠️ No hay chunks (graba primero)");
-    const clip = buildClipBlob(h.t, h.label);
+    const clip = buildClipBlob(h.t);
     if (!clip) return toast("⚠️ No se pudo armar el clip");
     const nameSafe = (h.label || "highlight").replace(/[^\w\- ]+/g,"").trim().slice(0,30).replace(/\s+/g,"_");
     downloadBlob(clip, `clip_${roomId}_${fmtTime(h.t).replace(":","-")}_${nameSafe || "highlight"}.webm`);
@@ -1463,7 +1776,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!highlights.length) return toast("No hay highlights");
     let ok = 0;
     for (const h of [...highlights].reverse()) {
-      const clip = buildClipBlob(h.t, h.label);
+      const clip = buildClipBlob(h.t);
       if (!clip) continue;
       ok++;
       const nameSafe = (h.label || "highlight").replace(/[^\w\- ]+/g,"").trim().slice(0,30).replace(/\s+/g,"_");
@@ -1559,9 +1872,9 @@ document.addEventListener("DOMContentLoaded", () => {
       row.querySelector('[data-act="del"]').onclick = () => {
         highlights = highlights.filter(x => x.id !== h.id);
         updateHighlightsPanel();
+        updateHUD();
       };
 
-      // Click en el label => rename
       row.querySelector(".mm-high__label").onclick = () => {
         const newLabel = prompt("Editar título:", h.label || "Highlight");
         if (newLabel == null) return;
@@ -1592,17 +1905,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (camStream) camStream.getTracks().forEach(t => t.stop());
     camStream = stream;
-    localStream = stream;
 
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else if (isMuted) {
-      setAudioEnabled(false);
+    if (!usingScreen) {
+      localStream = stream;
+      applyMutePolicy();
+      await setLocalPreview(localStream);
+      await replaceTracksAll();
     }
 
-    await setLocalPreview(localStream);
-    await replaceTracksAll();
     toast("🎛️ Dispositivos cambiados");
   }
 
@@ -1610,7 +1920,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function enablePTT() {
     pttEnabled = true;
     isMuted = true;
-    setAudioEnabled(false);
+    applyMutePolicy();
     setStatus("🎙️ PTT ON (mantén SPACE para hablar)");
     toast("🎙️ Push-to-talk ON");
     updateMuteLabel();
@@ -1619,7 +1929,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function disablePTT() {
     pttEnabled = false;
-    setAudioEnabled(!isMuted);
+    applyMutePolicy();
     toast("🎙️ Push-to-talk OFF");
     updateMuteLabel();
     updateHUD();
@@ -1650,75 +1960,7 @@ document.addEventListener("DOMContentLoaded", () => {
     tile && tile.classList.remove("ptt-speaking");
   });
 
-  // ----- DataChannel P2P: files (chunked) -----
-  const fileRx = new Map();
-  const CHUNK = 16 * 1024;
-
-  function setupDataChannel(peerId) {
-    const st = peers.get(peerId);
-    if (!st?.dc) return;
-
-    st.dc.binaryType = "arraybuffer";
-
-    st.dc.onmessage = (ev) => {
-      if (typeof ev.data === "string") {
-        let m = null;
-        try { m = JSON.parse(ev.data); } catch { return; }
-
-        if (m.t === "file-meta") {
-          fileRx.set(peerId, { name: m.name, size: m.size, chunks: [], received: 0 });
-          toast(`📥 Recibiendo: ${m.name} (${Math.round(m.size / 1024)} KB)`);
-          return;
-        }
-
-        if (m.t === "file-done") {
-          const rx = fileRx.get(peerId);
-          if (!rx) return;
-
-          const blob = new Blob(rx.chunks);
-          downloadBlob(blob, rx.name || `file_${Date.now()}`);
-
-          toast(`✅ Archivo listo: ${rx.name}`);
-          fileRx.delete(peerId);
-          setStatus("✅ Recibido");
-          return;
-        }
-        return;
-      }
-
-      const rx = fileRx.get(peerId);
-      if (!rx) return;
-
-      rx.chunks.push(ev.data);
-      rx.received += ev.data.byteLength;
-
-      const pct = Math.min(100, Math.round((rx.received / rx.size) * 100));
-      setStatus(`📥 ${rx.name} • ${pct}%`);
-    };
-  }
-
-  async function sendFileToAll(file) {
-    if (!file) return;
-    const buf = await file.arrayBuffer();
-
-    let sentTo = 0;
-    for (const [, st] of peers.entries()) {
-      if (!st?.dc || st.dc.readyState !== "open") continue;
-
-      try {
-        st.dc.send(JSON.stringify({ t: "file-meta", name: file.name, size: buf.byteLength }));
-        for (let off = 0; off < buf.byteLength; off += CHUNK) {
-          st.dc.send(buf.slice(off, off + CHUNK));
-        }
-        st.dc.send(JSON.stringify({ t: "file-done" }));
-        sentTo++;
-      } catch {}
-    }
-
-    toast(sentTo ? `📤 Enviado a ${sentTo}: ${file.name}` : "⚠️ No hay DataChannels listos");
-  }
-
-  // ----- Floating HUD (REC / CC / PTT / DEV / FILE / ⭐ / 📑) -----
+  // ----- Floating HUD (REC / CC / PTT / DEV / FILE / ⭐ / 📑 / TXT / 🤖) -----
   let hud = null;
   let fileInput = null;
 
@@ -1735,6 +1977,8 @@ document.addEventListener("DOMContentLoaded", () => {
       <button class="mm-hud__btn" data-act="file">📎</button>
       <button class="mm-hud__btn" data-act="mark">⭐</button>
       <button class="mm-hud__btn" data-act="high">📑</button>
+      <button class="mm-hud__btn" data-act="txt">TXT</button>
+      <button class="mm-hud__btn" data-act="ai">🤖</button>
     `;
 
     fileInput = document.createElement("input");
@@ -1754,42 +1998,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!b) return;
       const act = b.getAttribute("data-act");
 
-      if (act === "rec") {
-        if (!recOn) startRecording();
-        else stopRecording();
-        return;
-      }
-
-      if (act === "captions") {
-        if (!captionsEnabled) startCaptions();
-        else stopCaptions();
-        return;
-      }
-
-      if (act === "ptt") {
-        if (!pttEnabled) enablePTT();
-        else disablePTT();
-        return;
-      }
-
-      if (act === "file") {
-        fileInput.click();
-        return;
-      }
-
-      if (act === "mark") {
-        addHighlightPrompt();
-        return;
-      }
-
-      if (act === "high") {
-        toggleHighlightsPanel();
-        return;
-      }
+      if (act === "rec") return (!recOn ? startRecording() : stopRecording());
+      if (act === "captions") return (!captionsEnabled ? startCaptions() : stopCaptions());
+      if (act === "ptt") return (!pttEnabled ? enablePTT() : disablePTT());
+      if (act === "file") return fileInput.click();
+      if (act === "mark") return addHighlightPrompt();
+      if (act === "high") return toggleHighlightsPanel();
+      if (act === "txt") return exportTranscriptTxt();
+      if (act === "ai") return runAISummary();
 
       if (act === "dev") {
         try {
-          if (!localStream) toast("ℹ️ Tip: inicia cámara primero para ver nombres de dispositivos", 2000);
+          if (!camStream && !localStream) toast("ℹ️ Tip: inicia cámara primero para ver nombres de dispositivos", 2000);
 
           const { cams, mics } = await listDevices();
 
@@ -1824,8 +2044,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (recOn) btn('[data-act="rec"]')?.classList.add("is-on");
     if (captionsEnabled) btn('[data-act="captions"]')?.classList.add("is-on");
     if (pttEnabled) btn('[data-act="ptt"]')?.classList.add("is-on");
-
-    // marca ON si hay highlights
     if (highlights.length) btn('[data-act="mark"]')?.classList.add("is-on");
   }
 
@@ -1840,10 +2058,25 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Enter") joinRoom(roomInput.value);
   });
 
-  camBtn && (camBtn.onclick = () =>
-    startCamera(false).catch((e) => setStatus(`❌ Cámara: ${e?.name || "error"}`))
-  );
+  // cámara: si ya tienes cam, solo actívala como fuente (si no estás en screen)
+  camBtn && (camBtn.onclick = async () => {
+    try {
+      if (!camStream) await startCamera(false);
+      if (usingScreen) {
+        toast("ℹ️ Estás en pantalla. Detén pantalla para volver a cámara.");
+      } else {
+        localStream = camStream;
+        applyMutePolicy();
+        await setLocalPreview(localStream);
+        await replaceTracksAll();
+        toast("🎥 Usando cámara");
+      }
+    } catch (e) {
+      setStatus(`❌ Cámara: ${e?.name || "error"}`);
+    }
+  });
 
+  // screen: toggle smart (si está activo, stopPresent)
   screenBtn && (screenBtn.onclick = () =>
     startPresentSmart().catch((e) => setStatus(`❌ Presentar: ${e?.name || "error"}`))
   );
@@ -1862,4 +2095,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Boot
   joinRoom(roomId);
   if (isMobile()) setStatus("📱 Móvil: Presentar = cámara trasera (no hay pantalla real en web móvil).");
+
+  // Auto WS connect
+  connectWS();
 });
