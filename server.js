@@ -10,7 +10,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 /**
- * rooms: Map<roomId, Map<clientId, { ws, name, isAlive }>>
+ * rooms: Map<roomId, Map<clientId, { ws, name }>>
  */
 const rooms = new Map();
 
@@ -30,7 +30,7 @@ function broadcast(room, data, exceptId = null) {
   }
 }
 
-// ===== WS heartbeat (mata conexiones muertas) =====
+// Heartbeat
 const HEARTBEAT_MS = 30000;
 const hb = setInterval(() => {
   wss.clients.forEach((ws) => {
@@ -55,7 +55,6 @@ wss.on("connection", (ws) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
-    // client heartbeat (opcional)
     if (msg.type === "ping") {
       safeSend(ws, { type: "pong", t: Date.now() });
       return;
@@ -73,20 +72,14 @@ wss.on("connection", (ws) => {
 
       const room = getRoom(roomId);
 
-      // peers existentes antes de meter al nuevo (ahora incluye name)
       const peers = Array.from(room.entries()).map(([id, info]) => ({ id, name: info.name }));
+      room.set(clientId, { ws, name });
 
-      room.set(clientId, { ws, name, isAlive: true });
-
-      // al nuevo: lista de peers
       safeSend(ws, { type: "peers", peers });
-
-      // a los demás: entró alguien
       broadcast(room, { type: "peer-joined", clientId, name }, clientId);
       return;
     }
 
-    // A partir de aquí, requiere estar en room
     const roomId = ws._roomId;
     const fromId = ws._clientId;
     if (!roomId || !fromId) return;
@@ -94,7 +87,6 @@ wss.on("connection", (ws) => {
     const room = rooms.get(roomId);
     if (!room) return;
 
-    // rename
     if (msg.type === "rename") {
       const name = String(msg.name || "").trim().slice(0, 24);
       if (!name) return;
@@ -106,7 +98,6 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // chat (broadcast)
     if (msg.type === "chat") {
       const text = String(msg.text || "").trim().slice(0, 240);
       if (!text) return;
@@ -116,21 +107,27 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // reactions (broadcast)
     if (msg.type === "reaction") {
       const emoji = String(msg.emoji || "✨").slice(0, 6);
       broadcast(room, { type: "reaction", from: fromId, emoji, ts: Date.now() });
       return;
     }
 
-    // señalización (forward 1:1)
+    // ✅ CAPTIONS (broadcast)
+    if (msg.type === "caption") {
+      const text = String(msg.text || "").trim().slice(0, 200);
+      if (!text) return;
+      const info = room.get(fromId);
+      const name = info?.name || ws._name || fromId.slice(0, 8);
+      broadcast(room, { type: "caption", from: fromId, name, text, ts: Date.now() });
+      return;
+    }
+
     if (msg.type === "signal") {
       const toId = msg.to;
       if (!toId) return;
-
       const target = room.get(toId);
       if (!target) return;
-
       safeSend(target.ws, { type: "signal", from: fromId, data: msg.data });
       return;
     }
@@ -145,7 +142,6 @@ wss.on("connection", (ws) => {
     if (!room) return;
 
     room.delete(clientId);
-
     broadcast(room, { type: "peer-left", clientId });
 
     if (room.size === 0) rooms.delete(roomId);
