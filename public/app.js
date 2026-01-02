@@ -1,11 +1,4 @@
 // public/app.js
-// ✅ FIX PRO: pantalla + cámara sin "negro" y sin comportamiento raro
-// - Ya NO usamos "localStream = lo último que prendí" para enviar.
-// - Ahora mantenemos 2 streams: camStream y screenStream, y construimos un "sendStream" estable.
-// - Regla default: si hay pantalla activa -> se envía pantalla SIEMPRE (cámara queda como PiP local).
-// - Si apagas cámara mientras sigues con pantalla -> NO se pone negro (seguirá enviando pantalla).
-// - Agrega botón HUD: 🔁 Swap (solo si hay pantalla + cámara) para cambiar qué se envía (pantalla vs cámara).
-
 document.addEventListener("DOMContentLoaded", () => {
   const $ = (q) => document.querySelector(q);
 
@@ -38,7 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
       border: 1px solid rgba(255,255,255,.14);
       padding: 10px 12px; border-radius: 999px; z-index: 9999;
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      font: 700 13px ui-sans-serif, system-ui; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      font: 800 13px ui-sans-serif, system-ui; box-shadow: 0 10px 30px rgba(0,0,0,.35);
       max-width: min(92vw, 520px); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
     `;
     el.textContent = msg;
@@ -54,6 +47,25 @@ document.addEventListener("DOMContentLoaded", () => {
     return String(s || "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
     }[c]));
+  }
+
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+  function fmtTime(ms){
+    ms = Math.max(0, ms|0);
+    const s = Math.floor(ms/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,"0");
+    const ss = String(s%60).padStart(2,"0");
+    return `${mm}:${ss}`;
+  }
+
+  function downloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
   }
 
   // ===== Device helpers =====
@@ -92,6 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localVideo.muted = true;
     localVideo.playsInline = true;
 
+    // Doble click = fullscreen
     localVideo.addEventListener("dblclick", async () => {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -100,9 +113,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ICE
+  // ICE (simple)
   const iceConfig = {
-    iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }]
+    iceServers: [
+      { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }
+    ]
   };
 
   // ===== Inject WOW styles =====
@@ -129,17 +144,14 @@ document.addEventListener("DOMContentLoaded", () => {
         padding: 10px 12px;
         font-weight: 900;
         cursor: pointer;
-        transition: transform .12s ease, background .12s ease, border-color .12s ease, opacity .12s ease;
+        transition: transform .12s ease, background .12s ease, border-color .12s ease;
         user-select:none;
-        white-space: nowrap;
       }
       .mm-hud__btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.11); border-color: rgba(255,255,255,.22)}
       .mm-hud__btn.is-on{
         background: linear-gradient(135deg, rgba(124,92,255,.35), rgba(33,212,253,.25));
         border-color: rgba(255,255,255,.24);
       }
-      .mm-hud__btn.is-off{opacity:.55}
-
       .remoteCard.is-speaking{
         border-color: rgba(33,212,253,.35) !important;
         box-shadow: 0 0 0 1px rgba(33,212,253,.18), 0 18px 60px rgba(0,0,0,.45) !important;
@@ -148,7 +160,6 @@ document.addEventListener("DOMContentLoaded", () => {
         border-color: rgba(124,92,255,.45) !important;
         box-shadow: 0 0 0 1px rgba(124,92,255,.22), 0 20px 70px rgba(0,0,0,.55) !important;
       }
-
       .mm-caption{
         position: absolute;
         left: 12px; right: 12px; bottom: 58px;
@@ -166,33 +177,81 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       .mm-caption.show{opacity:1; transform: translateY(0)}
       .mm-caption__name{color: rgba(33,212,253,.95)}
-
       .tile.ptt-speaking{
         outline: 2px solid rgba(33,212,253,.55);
         outline-offset: 2px;
       }
 
-      /* ✅ PiP local (cámara encima cuando hay pantalla) */
-      .mm-pip{
-        position:absolute;
-        right: 12px;
-        bottom: 12px;
-        width: min(26vw, 210px);
-        aspect-ratio: 16/9;
-        border-radius: 14px;
-        overflow:hidden;
-        border: 1px solid rgba(255,255,255,.18);
-        box-shadow: 0 16px 45px rgba(0,0,0,.45);
-        background: rgba(0,0,0,.25);
-        z-index: 1200;
+      /* Highlights panel */
+      .mm-high{
+        position: fixed; left: 16px; bottom: 84px; z-index: 9999;
+        width: min(420px, calc(100vw - 32px));
+        border-radius: 18px; overflow: hidden;
+        border: 1px solid rgba(255,255,255,.12);
+        background: rgba(0,0,0,.22);
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 18px 60px rgba(0,0,0,.45);
+        display: none;
+        font: 800 13px ui-sans-serif, system-ui;
       }
-      .mm-pip video{width:100%;height:100%;object-fit:cover}
+      .mm-high__head{
+        padding: 10px 12px;
+        display:flex; align-items:center; justify-content:space-between; gap:10px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        color: rgba(255,255,255,.92);
+      }
+      .mm-high__tools{display:flex; gap:8px; align-items:center;}
+      .mm-high__btn{
+        border: 1px solid rgba(255,255,255,.14);
+        background: rgba(255,255,255,.08);
+        color: rgba(255,255,255,.92);
+        border-radius: 12px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-weight: 900;
+      }
+      .mm-high__list{
+        max-height: 280px;
+        overflow:auto;
+        padding: 10px 12px;
+        display:flex; flex-direction:column; gap: 10px;
+      }
+      .mm-high__item{
+        display:grid;
+        grid-template-columns: 64px 1fr auto;
+        gap: 10px;
+        align-items:center;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.06);
+        border-radius: 14px;
+        padding: 10px 10px;
+      }
+      .mm-high__t{color: rgba(33,212,253,.95); font-weight: 900;}
+      .mm-high__label{color: rgba(255,255,255,.92); font-weight: 850; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+      .mm-high__actions{display:flex; gap:8px; align-items:center; justify-content:flex-end;}
+      .mm-high__mini{
+        border: 1px solid rgba(255,255,255,.14);
+        background: rgba(0,0,0,.18);
+        color: rgba(255,255,255,.92);
+        border-radius: 12px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-weight: 900;
+      }
+      .mm-high__mini:hover{background: rgba(255,255,255,.09)}
+      .mm-high__empty{color: rgba(255,255,255,.65); padding: 12px; text-align:center;}
+
+      @media (max-width:520px){
+        .mm-hud{left: 12px; right: 12px; width: calc(100vw - 24px); justify-content: space-between}
+        .mm-hud__btn{flex:1; display:flex; justify-content:center}
+        .mm-high{left: 12px; right: 12px; width: calc(100vw - 24px)}
+      }
     `;
     document.head.appendChild(st);
   }
   injectWowStyles();
 
-  // ===== WS (reconexión + heartbeat) =====
+  // ===== WS (con reconexión + heartbeat) =====
   let ws = null;
   let wsWanted = true;
   let reconnectTry = 0;
@@ -301,41 +360,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }, wait);
   }
 
-  // =========================================================
-  // ✅ MEDIA PRO: camStream + screenStream + sendStream estable
-  // =========================================================
-  let camStream = null;              // cámara+mic (o solo cam si decides)
-  let screenStream = null;           // display media raw
-  let screenMicStream = null;        // mic adicional para mezcla (opcional)
-  let screenMixCtx = null;           // AudioContext de mezcla (opcional)
-  let screenVideoTrack = null;       // track de video de pantalla
-  let screenMixedAudioTrack = null;  // track de audio mezclado (sys + mic)
-
-  let sendStream = null;             // ✅ stream que realmente se ENVÍA por WebRTC
-  let preferSendVideo = "auto";      // "auto" | "screen" | "cam" (solo relevante si hay screen+cam)
+  // ===== Media =====
+  let camStream = null;
+  let screenStream = null;
+  let localStream = null;
 
   // mute + PTT
   let isMuted = false;
   let pttEnabled = false;
 
-  // PiP
-  let pipWrap = null;
-  let pipVideo = null;
-
-  function getCamVideoTrack() {
-    return camStream ? camStream.getVideoTracks()[0] : null;
-  }
-  function getCamAudioTrack() {
-    return camStream ? camStream.getAudioTracks()[0] : null;
-  }
-  function getScreenVideoTrack() {
-    return screenVideoTrack || (screenStream ? screenStream.getVideoTracks()[0] : null);
-  }
-  function getScreenAudioTrack() {
-    return screenMixedAudioTrack || (screenStream ? screenStream.getAudioTracks()[0] : null);
-  }
-
-  async function setLocalMainPreview(stream) {
+  async function setLocalPreview(stream) {
     if (!localVideo) return;
     localVideo.srcObject = stream || null;
     if (stream) {
@@ -345,111 +379,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function ensurePiPContainer() {
-    // host = tile (si existe) para que el PiP quede encima del video local
-    const host = localVideo?.closest?.(".tile") || localVideo?.parentElement || document.body;
-
-    // asegura relative
-    const prevPos = getComputedStyle(host).position;
-    if (prevPos === "static") host.style.position = "relative";
-
-    if (!pipWrap) {
-      pipWrap = document.createElement("div");
-      pipWrap.className = "mm-pip";
-      pipVideo = document.createElement("video");
-      pipVideo.autoplay = true;
-      pipVideo.playsInline = true;
-      pipVideo.muted = true;
-      pipWrap.appendChild(pipVideo);
-      host.appendChild(pipWrap);
-    }
-    return { host, pipWrap, pipVideo };
-  }
-
-  function removePiP() {
-    try { pipVideo && (pipVideo.srcObject = null); } catch {}
-    pipWrap?.remove();
-    pipWrap = null;
-    pipVideo = null;
-  }
-
-  // ✅ Decide qué track de video se envía
-  function chooseSendVideoTrack() {
-    const hasScreen = !!getScreenVideoTrack();
-    const hasCam = !!getCamVideoTrack();
-
-    if (!hasScreen && !hasCam) return null;
-    if (hasScreen && !hasCam) return getScreenVideoTrack();
-    if (!hasScreen && hasCam) return getCamVideoTrack();
-
-    // ambos existen:
-    if (preferSendVideo === "cam") return getCamVideoTrack();
-    if (preferSendVideo === "screen") return getScreenVideoTrack();
-
-    // auto: si hay pantalla activa, manda pantalla
-    return getScreenVideoTrack();
-  }
-
-  // ✅ Decide audio a enviar (si pantalla está activa: prioriza audio de pantalla mezclado, si no: audio de cam)
-  function chooseSendAudioTrack() {
-    const hasScreen = !!getScreenVideoTrack();
-    if (hasScreen) {
-      return getScreenAudioTrack() || getCamAudioTrack() || null;
-    }
-    return getCamAudioTrack() || null;
-  }
-
   function setAudioEnabled(on) {
-    if (!sendStream) return;
-    sendStream.getAudioTracks().forEach(t => (t.enabled = !!on));
+    if (!localStream) return;
+    localStream.getAudioTracks().forEach(t => (t.enabled = !!on));
   }
 
-  // ✅ Rebuild del stream que se envía (evita negro / track null accidental)
-  async function rebuildSendStreamAndUpdate() {
-    const v = chooseSendVideoTrack();
-    const a = chooseSendAudioTrack();
-
-    const ns = new MediaStream();
-    if (v) ns.addTrack(v);
-    if (a) ns.addTrack(a);
-    sendStream = ns;
-
-    // aplica mute/PTT a audio de envío
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else {
-      setAudioEnabled(!isMuted);
-    }
-
-    // preview local:
-    const hasScreen = !!getScreenVideoTrack();
-    const hasCam = !!getCamVideoTrack();
-
-    if (hasScreen) {
-      // main = pantalla raw
-      await setLocalMainPreview(screenStream || new MediaStream([getScreenVideoTrack()].filter(Boolean)));
-
-      // PiP = cam si existe
-      if (hasCam) {
-        const { pipVideo } = ensurePiPContainer();
-        pipVideo.srcObject = camStream;
-        pipVideo.onloadedmetadata = async () => { try { await pipVideo.play(); } catch {} };
-      } else {
-        removePiP();
-      }
-    } else {
-      // main = cam
-      removePiP();
-      await setLocalMainPreview(camStream);
-    }
-
-    await replaceTracksAll();
-    updateHUD();
-    updateMuteLabel();
-  }
-
-  // ===== Start camera =====
   async function startCamera(preferBack = false) {
     if (!navigator.mediaDevices?.getUserMedia) {
       setStatus("❌ getUserMedia no disponible en este navegador.");
@@ -485,19 +419,25 @@ document.addEventListener("DOMContentLoaded", () => {
       throw lastErr || new Error("camera failed");
     }
 
-    // apaga stream previo de cam
     if (camStream) camStream.getTracks().forEach(t => t.stop());
+
     camStream = stream;
+    localStream = camStream;
 
-    // si hay pantalla activa, NO cambiamos el envío (por default manda pantalla).
-    // Solo actualizamos PiP y/o audio fallback.
-    await rebuildSendStreamAndUpdate();
+    if (pttEnabled) {
+      isMuted = true;
+      setAudioEnabled(false);
+    } else {
+      if (isMuted) setAudioEnabled(false);
+    }
 
-    setStatus(preferBack ? "📱 Cámara trasera lista." : "🎥 Cámara lista.");
+    await setLocalPreview(localStream);
+    await replaceTracksAll();
+
+    setStatus(preferBack ? "📱 Presentando (cámara trasera + mic)." : "🎥 Cámara + mic listos.");
     toast(preferBack ? "📱 Cámara trasera" : "🎥 Cámara lista");
   }
 
-  // ===== Start screen (desktop) =====
   async function startScreenDesktop() {
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setStatus("❌ getDisplayMedia no disponible aquí.");
@@ -509,14 +449,9 @@ document.addEventListener("DOMContentLoaded", () => {
       audio: true
     });
 
-    // limpia anterior
-    await stopScreenInternalsOnly();
-
-    screenStream = display;
-    screenVideoTrack = display.getVideoTracks()[0] || null;
+    const screenVideoTrack = display.getVideoTracks()[0] || null;
     const systemAudioTrack = display.getAudioTracks()[0] || null;
 
-    // mic fallback / mix
     let micStream = null;
     try {
       micStream = await navigator.mediaDevices.getUserMedia({
@@ -524,116 +459,85 @@ document.addEventListener("DOMContentLoaded", () => {
         video: false
       });
     } catch { micStream = null; }
-    screenMicStream = micStream;
-
     const micTrack = micStream ? micStream.getAudioTracks()[0] : null;
 
-    // mezcla sys + mic (si se puede)
-    screenMixedAudioTrack = null;
-    screenMixCtx = null;
-
+    let mixedAudioTrack = null;
     if (systemAudioTrack || micTrack) {
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        screenMixCtx = ctx;
-        const dest = ctx.createMediaStreamDestination();
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = ctx.createMediaStreamDestination();
 
-        if (systemAudioTrack) {
-          const sysSource = ctx.createMediaStreamSource(new MediaStream([systemAudioTrack]));
-          sysSource.connect(dest);
-        }
-        if (micTrack) {
-          const micSource = ctx.createMediaStreamSource(new MediaStream([micTrack]));
-          micSource.connect(dest);
-        }
-        screenMixedAudioTrack = dest.stream.getAudioTracks()[0] || null;
-      } catch {
-        screenMixedAudioTrack = systemAudioTrack || micTrack || null;
+      if (systemAudioTrack) {
+        const sysSource = ctx.createMediaStreamSource(new MediaStream([systemAudioTrack]));
+        sysSource.connect(dest);
       }
+      if (micTrack) {
+        const micSource = ctx.createMediaStreamSource(new MediaStream([micTrack]));
+        micSource.connect(dest);
+      }
+      mixedAudioTrack = dest.stream.getAudioTracks()[0] || null;
     }
 
-    // default: cuando hay pantalla, manda pantalla
-    preferSendVideo = "screen";
+    const newStream = new MediaStream();
+    if (screenVideoTrack) newStream.addTrack(screenVideoTrack);
+    if (mixedAudioTrack) newStream.addTrack(mixedAudioTrack);
 
-    // si usuario corta desde UI del navegador
-    if (screenVideoTrack) screenVideoTrack.onended = () => stopScreenOnly().catch(()=>{});
+    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
 
-    await rebuildSendStreamAndUpdate();
+    screenStream = display;
+    localStream = newStream;
 
     if (!systemAudioTrack) setStatus("🖥️ Pantalla sin audio de sistema (fallback a mic).");
-    else setStatus("🖥️ Pantalla compartida (audio depende del navegador).");
+    else setStatus("🖥️ Pantalla + audio (si el navegador lo permite).");
 
+    if (pttEnabled) {
+      isMuted = true;
+      setAudioEnabled(false);
+    } else {
+      if (isMuted) setAudioEnabled(false);
+    }
+
+    await setLocalPreview(localStream);
+    await replaceTracksAll();
+
+    if (screenVideoTrack) screenVideoTrack.onended = () => stopPresent();
     toast("🖥️ Compartiendo pantalla");
   }
 
-  // helper: detiene solo internos de pantalla sin tocar cam ni send selection
-  async function stopScreenInternalsOnly() {
-    if (screenStream) {
-      try { screenStream.getTracks().forEach(t => t.stop()); } catch {}
-    }
-    if (screenMicStream) {
-      try { screenMicStream.getTracks().forEach(t => t.stop()); } catch {}
-    }
-    if (screenMixCtx) {
-      try { screenMixCtx.close(); } catch {}
-    }
-
-    screenStream = null;
-    screenMicStream = null;
-    screenMixCtx = null;
-    screenVideoTrack = null;
-    screenMixedAudioTrack = null;
-  }
-
-  // ✅ Stop solo pantalla (sin tumbar cámara ni peers)
-  async function stopScreenOnly() {
-    const hadScreen = !!getScreenVideoTrack();
-    if (!hadScreen) return toast("ℹ️ No hay pantalla activa");
-
-    await stopScreenInternalsOnly();
-
-    // si estabas forzando enviar cam mientras había pantalla, déjalo en auto
-    if (preferSendVideo === "screen") preferSendVideo = "auto";
-
-    await rebuildSendStreamAndUpdate();
-    setStatus(camStream ? "🖥️ Pantalla detenida • sigues con cámara" : "🖥️ Pantalla detenida • sin stream");
-    toast("🖥️ Pantalla detenida");
-  }
-
-  // ✅ Stop solo cámara (sin tumbar pantalla)
-  async function stopCameraOnly() {
-    if (!camStream) return toast("ℹ️ No hay cámara activa");
-
-    // si estabas enviando cámara (swap) pero hay pantalla, regresa a pantalla para evitar negro
-    if (getScreenVideoTrack() && preferSendVideo === "cam") preferSendVideo = "screen";
-
-    try { camStream.getTracks().forEach(t => t.stop()); } catch {}
-    camStream = null;
-
-    await rebuildSendStreamAndUpdate();
-    setStatus(getScreenVideoTrack() ? "🎥 Cámara detenida • sigues con pantalla" : "🎥 Cámara detenida • sin stream");
-    toast("🎥 Cámara detenida");
-  }
-
-  // "Stop present" legacy: lo dejamos por compatibilidad con tu flujo viejo
   async function stopPresent() {
-    // antes apagaba pantalla y volvía a cam: mantenemos
-    await stopScreenOnly();
+    if (screenStream) {
+      screenStream.getTracks().forEach(t => t.stop());
+      screenStream = null;
+    }
+    if (camStream) {
+      localStream = camStream;
+
+      if (pttEnabled) {
+        isMuted = true;
+        setAudioEnabled(false);
+      } else if (isMuted) {
+        setAudioEnabled(false);
+      }
+
+      await setLocalPreview(localStream);
+      await replaceTracksAll();
+      setStatus("↩️ Volviste a cámara.");
+      toast("↩️ Volviste a cámara");
+    } else {
+      localStream = null;
+      await setLocalPreview(null);
+      await replaceTracksAll();
+      setStatus("⛔ Sin stream.");
+    }
   }
 
-  // stop nuclear
   async function stopAll() {
     if (!confirm("¿Detener cámara/pantalla y desconectar peers?")) return;
 
-    await stopScreenInternalsOnly();
-    if (camStream) { try { camStream.getTracks().forEach(t => t.stop()); } catch {} }
-    camStream = null;
+    if (camStream) camStream.getTracks().forEach(t => t.stop());
+    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+    camStream = null; screenStream = null; localStream = null;
 
-    sendStream = null;
-    removePiP();
-    await setLocalMainPreview(null);
-    await replaceTracksAll();
-
+    await setLocalPreview(null);
     for (const pid of Array.from(peers.keys())) removePeer(pid);
 
     if (recOn) stopRecording();
@@ -641,19 +545,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setStatus("🛑 Detenido.");
     toast("🛑 Detenido");
-  }
-
-  // swap: alterna qué se envía (si hay pantalla + cam)
-  async function swapSendVideo() {
-    const hasScreen = !!getScreenVideoTrack();
-    const hasCam = !!getCamVideoTrack();
-    if (!hasScreen || !hasCam) return toast("ℹ️ Necesitas pantalla + cámara para swap");
-
-    if (preferSendVideo === "cam") preferSendVideo = "screen";
-    else preferSendVideo = "cam";
-
-    await rebuildSendStreamAndUpdate();
-    toast(preferSendVideo === "cam" ? "🔁 Enviando CÁMARA" : "🔁 Enviando PANTALLA");
   }
 
   function toggleMute() {
@@ -707,9 +598,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // =========================================================
-  // ✅ WEBRTC (Perfect Negotiation) – reemplaza tracks usando sendStream
-  // =========================================================
+  // ===== WebRTC (Perfect Negotiation) =====
   const peers = new Map();
 
   function isPoliteFor(peerId) {
@@ -725,23 +614,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (statusEl && String(statusEl.textContent || "").startsWith("✅ Conectado")) {
       statusEl.textContent = `✅ Conectado • ${clientId.slice(0, 8)} • room ${roomId} • 👥 ${n}`;
     }
-  }
-
-  async function replaceTracks(peerId) {
-    const st = peers.get(peerId);
-    if (!st) return;
-
-    const v = sendStream ? sendStream.getVideoTracks()[0] : null;
-    const a = sendStream ? sendStream.getAudioTracks()[0] : null;
-
-    try {
-      if (st.vSender) await st.vSender.replaceTrack(v || null);
-      if (st.aSender) await st.aSender.replaceTrack(a || null);
-    } catch {}
-  }
-
-  async function replaceTracksAll() {
-    for (const pid of peers.keys()) await replaceTracks(pid);
   }
 
   function showReaction(peerId, emoji) {
@@ -795,7 +667,7 @@ document.addEventListener("DOMContentLoaded", () => {
     wrap.style.cssText = `
       position: fixed; right: 16px; bottom: 16px; z-index: 9998;
       width: min(360px, calc(100vw - 32px));
-      font: 700 13px ui-sans-serif, system-ui;
+      font: 800 13px ui-sans-serif, system-ui;
     `;
 
     const btn = document.createElement("button");
@@ -1061,6 +933,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const pc = new RTCPeerConnection(iceConfig);
+
     const dc = pc.createDataChannel("mm-data", { negotiated: true, id: 0 });
 
     const ui = createRemoteCard(peerId, name);
@@ -1161,9 +1034,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  async function replaceTracks(peerId) {
+    const st = peers.get(peerId);
+    if (!st) return;
+
+    const v = localStream ? localStream.getVideoTracks()[0] : null;
+    const a = localStream ? localStream.getAudioTracks()[0] : null;
+
+    try {
+      if (st.vSender) await st.vSender.replaceTrack(v || null);
+      if (st.aSender) await st.aSender.replaceTrack(a || null);
+    } catch {}
+  }
+
+  async function replaceTracksAll() {
+    for (const pid of peers.keys()) await replaceTracks(pid);
+  }
+
   function removePeer(peerId) {
     const st = peers.get(peerId);
     if (!st) return;
+
     try { st.pc.close(); } catch {}
     st._statsTimer && clearInterval(st._statsTimer);
 
@@ -1256,16 +1147,18 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "m" || e.key === "M") toggleMute();
       if (e.key === "c" || e.key === "C") startCamera(false).catch(() => {});
       if (e.key === "p" || e.key === "P") startPresentSmart().catch(() => {});
-      if (e.key === "s" || e.key === "S") stopScreenOnly().catch(() => {});
-      if (e.key === "v" || e.key === "V") stopCameraOnly().catch(() => {});
-      if (e.key === "x" || e.key === "X") swapSendVideo().catch(() => {}); // swap
       if (e.key === "Escape") stopAll().catch(() => {});
+
+      // ⭐ Highlights
+      if (e.key === "h" || e.key === "H") addHighlightPrompt();
+      if (e.key === "l" || e.key === "L") toggleHighlightsPanel();
     });
   }
 
   // =========================================================
-  // WOW PACK: VAD + Spotlight + Recorder + PTT + Captions + File Transfer
-  // (mantengo todo tu bloque, solo cambié Recorder para usar sendStream)
+  // WOW PACK: VAD + Spotlight + Recorder + Device Picker
+  //         + Push-to-talk + Captions + File Transfer (P2P)
+  //         + ⭐ Highlights + Clips (sin IA)
   // =========================================================
 
   // ----- AudioContext (para VAD) -----
@@ -1315,7 +1208,11 @@ document.addEventListener("DOMContentLoaded", () => {
       an.fftSize = 512;
       src.connect(an);
 
-      vad.set(peerId, { analyser: an, tmp: new Uint8Array(an.fftSize), lastSpeakTs: 0 });
+      vad.set(peerId, {
+        analyser: an,
+        tmp: new Uint8Array(an.fftSize),
+        lastSpeakTs: 0
+      });
     } catch {}
   }
 
@@ -1356,7 +1253,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }, 700);
 
-  // ----- Captions -----
+  // ----- Captions (Web Speech API) -----
   let rec = null;
   let captionsEnabled = false;
   let lastCaptionSend = 0;
@@ -1398,11 +1295,20 @@ document.addEventListener("DOMContentLoaded", () => {
       showCaption(clientId, nick, text);
     };
 
+    rec.onerror = () => {};
     rec.onend = () => {
-      if (captionsEnabled) { try { rec.start(); } catch {} }
+      if (captionsEnabled) {
+        try { rec.start(); } catch {}
+      }
     };
 
-    try { rec.start(); toast("📝 Subtítulos ON"); } catch { toast("⚠️ No se pudieron iniciar subtítulos"); }
+    try {
+      rec.start();
+      toast("📝 Subtítulos ON");
+    } catch {
+      toast("⚠️ No se pudieron iniciar subtítulos");
+    }
+
     updateHUD();
   }
 
@@ -1414,41 +1320,81 @@ document.addEventListener("DOMContentLoaded", () => {
     updateHUD();
   }
 
-  // ----- Recorder (usa sendStream, no "lo último") -----
+  // ----- Recorder (MediaRecorder) + ⭐ Highlights + Clips -----
   let mr = null;
   let recChunks = [];
   let recOn = false;
+  let recMime = "video/webm";
+
+  // Para cortar en clips: guardamos chunks con rangos de tiempo
+  let recStartPerf = 0;
+  let recLastEnd = 0;
+  let recChunkMeta = []; // { start, end, blob }
+
+  // Highlights guardados
+  let highlights = []; // { id, t, label }
+  const CLIP_PRE_MS = 5000;  // 5s antes
+  const CLIP_POST_MS = 8000; // 8s después
+
+  function pickMime(){
+    return (
+      (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") && "video/webm;codecs=vp9,opus") ||
+      (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") && "video/webm;codecs=vp8,opus") ||
+      "video/webm"
+    );
+  }
 
   function startRecording() {
-    if (!sendStream || (!sendStream.getVideoTracks()[0] && !sendStream.getAudioTracks()[0])) {
-      return toast("❌ No hay stream para grabar. Inicia cámara/pantalla.");
-    }
+    if (!localStream) return toast("❌ No hay stream. Inicia cámara/pantalla.");
     if (!window.MediaRecorder) return toast("❌ MediaRecorder no disponible.");
 
     recChunks = [];
-    const mime =
-      MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" :
-      MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" :
-      "video/webm";
+    recChunkMeta = [];
+    recStartPerf = performance.now();
+    recLastEnd = 0;
+    recMime = pickMime();
 
-    mr = new MediaRecorder(sendStream, { mimeType: mime });
+    try {
+      mr = new MediaRecorder(localStream, { mimeType: recMime });
+    } catch {
+      mr = new MediaRecorder(localStream);
+      recMime = mr.mimeType || "video/webm";
+    }
 
-    mr.ondataavailable = (e) => e.data && e.data.size && recChunks.push(e.data);
-    mr.onstop = () => {
-      const blob = new Blob(recChunks, { type: mime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `minimeet_${roomId}_${Date.now()}.webm`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1200);
-      toast("🎬 Video descargado");
+    mr.ondataavailable = (e) => {
+      if (!e.data || !e.data.size) return;
+
+      const now = performance.now() - recStartPerf;
+      const start = recLastEnd;
+      const end = now;
+      recLastEnd = end;
+
+      recChunks.push(e.data);
+      recChunkMeta.push({ start, end, blob: e.data });
+
+      // Si el panel está abierto, refresca “duración”
+      if (highUI?.durEl && recOn) highUI.durEl.textContent = `REC ${fmtTime(end)}`;
     };
 
-    mr.start(800);
+    mr.onstop = () => {
+      const blob = new Blob(recChunks, { type: recMime });
+      downloadBlob(blob, `minimeet_${roomId}_${Date.now()}.webm`);
+      toast("🎬 Video descargado");
+
+      if (highlights.length) {
+        toast(`⭐ ${highlights.length} marca(s) lista(s) — abre 📑 para clips`, 2200);
+        // abre panel automáticamente si hay marcas
+        openHighlightsPanel();
+      }
+    };
+
+    // Timeslice pequeño = clips más precisos
+    mr.start(400); // 400ms
     recOn = true;
+
     toast("🔴 REC ON");
     updateHUD();
+    updateHighlightsPanel();
   }
 
   function stopRecording() {
@@ -1457,9 +1403,177 @@ document.addEventListener("DOMContentLoaded", () => {
     recOn = false;
     toast("⏹️ REC OFF");
     updateHUD();
+    updateHighlightsPanel();
   }
 
-  // ----- Device picker (simple, recomendado usar antes de compartir pantalla) -----
+  function getRecNowMs(){
+    if (!recOn) return recLastEnd || 0;
+    return performance.now() - recStartPerf;
+  }
+
+  function addHighlight(label=""){
+    if (!recOn) {
+      toast("⭐ Inicia REC para marcar highlights");
+      return;
+    }
+    const t = getRecNowMs();
+    const id = randId();
+    const cleanLabel = String(label || "").trim().slice(0, 60);
+    highlights.unshift({ id, t, label: cleanLabel || "Highlight" });
+    toast(`⭐ Marca guardada (${fmtTime(t)})`);
+    updateHighlightsPanel();
+  }
+
+  function addHighlightPrompt(){
+    if (!recOn) return addHighlight("");
+    const t = getRecNowMs();
+    const label = prompt(`⭐ Título del highlight (${fmtTime(t)})`, "") || "";
+    addHighlight(label);
+  }
+
+  function getClipChunksFor(tMs, pre=CLIP_PRE_MS, post=CLIP_POST_MS){
+    const start = clamp(tMs - pre, 0, Infinity);
+    const end = tMs + post;
+
+    const chosen = [];
+    for (const c of recChunkMeta) {
+      // overlap
+      if (c.end >= start && c.start <= end) chosen.push(c.blob);
+    }
+    return { start, end, blobs: chosen };
+  }
+
+  function buildClipBlob(tMs, label){
+    if (!recChunkMeta.length) return null;
+    const { start, end, blobs } = getClipChunksFor(tMs);
+    if (!blobs.length) return null;
+    return new Blob(blobs, { type: recMime });
+  }
+
+  function downloadClipFor(h){
+    if (!recChunkMeta.length) return toast("⚠️ No hay chunks (graba primero)");
+    const clip = buildClipBlob(h.t, h.label);
+    if (!clip) return toast("⚠️ No se pudo armar el clip");
+    const nameSafe = (h.label || "highlight").replace(/[^\w\- ]+/g,"").trim().slice(0,30).replace(/\s+/g,"_");
+    downloadBlob(clip, `clip_${roomId}_${fmtTime(h.t).replace(":","-")}_${nameSafe || "highlight"}.webm`);
+    toast("⬇️ Clip descargado");
+  }
+
+  function downloadAllClips(){
+    if (!highlights.length) return toast("No hay highlights");
+    let ok = 0;
+    for (const h of [...highlights].reverse()) {
+      const clip = buildClipBlob(h.t, h.label);
+      if (!clip) continue;
+      ok++;
+      const nameSafe = (h.label || "highlight").replace(/[^\w\- ]+/g,"").trim().slice(0,30).replace(/\s+/g,"_");
+      downloadBlob(clip, `clip_${roomId}_${fmtTime(h.t).replace(":","-")}_${nameSafe || "highlight"}.webm`);
+    }
+    toast(ok ? `⬇️ Descargando ${ok} clip(s)` : "⚠️ No se pudieron generar clips");
+  }
+
+  // ===== Highlights UI (inyectado) =====
+  let highUI = null;
+
+  function ensureHighlightsUI(){
+    if (highUI) return highUI;
+
+    const panel = document.createElement("div");
+    panel.className = "mm-high";
+    panel.innerHTML = `
+      <div class="mm-high__head">
+        <div style="display:flex;gap:10px;align-items:center;">
+          <span>📑 Highlights</span>
+          <span class="mm-high__dur" style="color:rgba(255,255,255,.65);font-weight:900;">REC 00:00</span>
+        </div>
+        <div class="mm-high__tools">
+          <button class="mm-high__btn" data-act="mark">⭐ Marcar</button>
+          <button class="mm-high__btn" data-act="dlall">⬇️ Todo</button>
+          <button class="mm-high__btn" data-act="close">✖</button>
+        </div>
+      </div>
+      <div class="mm-high__list"></div>
+    `;
+    document.body.appendChild(panel);
+
+    const listEl = panel.querySelector(".mm-high__list");
+    const durEl  = panel.querySelector(".mm-high__dur");
+
+    panel.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      const act = b.getAttribute("data-act");
+      if (act === "close") { panel.style.display = "none"; return; }
+      if (act === "mark") { addHighlightPrompt(); return; }
+      if (act === "dlall") { downloadAllClips(); return; }
+    });
+
+    highUI = { panel, listEl, durEl };
+    return highUI;
+  }
+
+  function openHighlightsPanel(){
+    const ui = ensureHighlightsUI();
+    ui.panel.style.display = "block";
+    updateHighlightsPanel();
+  }
+  function toggleHighlightsPanel(){
+    const ui = ensureHighlightsUI();
+    ui.panel.style.display = (ui.panel.style.display === "none" || !ui.panel.style.display) ? "block" : "none";
+    updateHighlightsPanel();
+  }
+
+  function updateHighlightsPanel(){
+    const ui = ensureHighlightsUI();
+    const dur = getRecNowMs();
+    ui.durEl.textContent = recOn ? `REC ${fmtTime(dur)}` : `REC OFF`;
+
+    ui.listEl.innerHTML = "";
+
+    if (!highlights.length) {
+      const empty = document.createElement("div");
+      empty.className = "mm-high__empty";
+      empty.textContent = recOn
+        ? "Presiona ⭐ o tecla H para guardar un highlight."
+        : "Inicia REC para poder marcar highlights.";
+      ui.listEl.appendChild(empty);
+      return;
+    }
+
+    for (const h of highlights) {
+      const row = document.createElement("div");
+      row.className = "mm-high__item";
+      row.innerHTML = `
+        <div class="mm-high__t">${fmtTime(h.t)}</div>
+        <div class="mm-high__label" title="${escapeHtml(h.label)}">${escapeHtml(h.label)}</div>
+        <div class="mm-high__actions">
+          <button class="mm-high__mini" data-act="clip">⬇️ Clip</button>
+          <button class="mm-high__mini" data-act="del">🗑️</button>
+        </div>
+      `;
+
+      row.querySelector('[data-act="clip"]').onclick = () => {
+        if (!recChunkMeta.length) return toast("⚠️ No hay grabación/chunks aún");
+        downloadClipFor(h);
+      };
+      row.querySelector('[data-act="del"]').onclick = () => {
+        highlights = highlights.filter(x => x.id !== h.id);
+        updateHighlightsPanel();
+      };
+
+      // Click en el label => rename
+      row.querySelector(".mm-high__label").onclick = () => {
+        const newLabel = prompt("Editar título:", h.label || "Highlight");
+        if (newLabel == null) return;
+        h.label = String(newLabel).trim().slice(0,60) || "Highlight";
+        updateHighlightsPanel();
+      };
+
+      ui.listEl.appendChild(row);
+    }
+  }
+
+  // ----- Device picker (switch cam/mic live) -----
   async function listDevices() {
     const devs = await navigator.mediaDevices.enumerateDevices();
     return {
@@ -1469,8 +1583,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function switchDevices({ camId = null, micId = null } = {}) {
-    // Si hay pantalla activa, cambiar mic "real" implicaría reconstruir la mezcla.
-    // Aquí lo dejamos simple: cambia cámara/mic solo del camStream.
     const constraints = {
       video: camId ? { deviceId: { exact: camId }, width: { ideal: 1280 }, height: { ideal: 720 } } : true,
       audio: micId ? { deviceId: { exact: micId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } : true
@@ -1480,8 +1592,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (camStream) camStream.getTracks().forEach(t => t.stop());
     camStream = stream;
+    localStream = stream;
 
-    await rebuildSendStreamAndUpdate();
+    if (pttEnabled) {
+      isMuted = true;
+      setAudioEnabled(false);
+    } else if (isMuted) {
+      setAudioEnabled(false);
+    }
+
+    await setLocalPreview(localStream);
+    await replaceTracksAll();
     toast("🎛️ Dispositivos cambiados");
   }
 
@@ -1529,7 +1650,7 @@ document.addEventListener("DOMContentLoaded", () => {
     tile && tile.classList.remove("ptt-speaking");
   });
 
-  // ----- DataChannel P2P: files -----
+  // ----- DataChannel P2P: files (chunked) -----
   const fileRx = new Map();
   const CHUNK = 16 * 1024;
 
@@ -1555,12 +1676,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!rx) return;
 
           const blob = new Blob(rx.chunks);
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = rx.name || `file_${Date.now()}`;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 1200);
+          downloadBlob(blob, rx.name || `file_${Date.now()}`);
 
           toast(`✅ Archivo listo: ${rx.name}`);
           fileRx.delete(peerId);
@@ -1591,7 +1707,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       try {
         st.dc.send(JSON.stringify({ t: "file-meta", name: file.name, size: buf.byteLength }));
-        for (let off = 0; off < buf.byteLength; off += CHUNK) st.dc.send(buf.slice(off, off + CHUNK));
+        for (let off = 0; off < buf.byteLength; off += CHUNK) {
+          st.dc.send(buf.slice(off, off + CHUNK));
+        }
         st.dc.send(JSON.stringify({ t: "file-done" }));
         sentTo++;
       } catch {}
@@ -1600,7 +1718,7 @@ document.addEventListener("DOMContentLoaded", () => {
     toast(sentTo ? `📤 Enviado a ${sentTo}: ${file.name}` : "⚠️ No hay DataChannels listos");
   }
 
-  // ----- HUD (REC / CC / PTT / DEV / FILE + STOPs + SWAP) -----
+  // ----- Floating HUD (REC / CC / PTT / DEV / FILE / ⭐ / 📑) -----
   let hud = null;
   let fileInput = null;
 
@@ -1615,10 +1733,8 @@ document.addEventListener("DOMContentLoaded", () => {
       <button class="mm-hud__btn" data-act="ptt">PTT</button>
       <button class="mm-hud__btn" data-act="dev">⚙</button>
       <button class="mm-hud__btn" data-act="file">📎</button>
-
-      <button class="mm-hud__btn" data-act="stopscr">🖥 Stop</button>
-      <button class="mm-hud__btn" data-act="stopcam">🎥 Stop</button>
-      <button class="mm-hud__btn" data-act="swap">🔁 Swap</button>
+      <button class="mm-hud__btn" data-act="mark">⭐</button>
+      <button class="mm-hud__btn" data-act="high">📑</button>
     `;
 
     fileInput = document.createElement("input");
@@ -1638,19 +1754,45 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!b) return;
       const act = b.getAttribute("data-act");
 
-      if (act === "rec") { if (!recOn) startRecording(); else stopRecording(); return; }
-      if (act === "captions") { if (!captionsEnabled) startCaptions(); else stopCaptions(); return; }
-      if (act === "ptt") { if (!pttEnabled) enablePTT(); else disablePTT(); return; }
-      if (act === "file") { fileInput.click(); return; }
-      if (act === "stopscr") { stopScreenOnly().catch(()=>{}); return; }
-      if (act === "stopcam") { stopCameraOnly().catch(()=>{}); return; }
-      if (act === "swap") { swapSendVideo().catch(()=>{}); return; }
+      if (act === "rec") {
+        if (!recOn) startRecording();
+        else stopRecording();
+        return;
+      }
+
+      if (act === "captions") {
+        if (!captionsEnabled) startCaptions();
+        else stopCaptions();
+        return;
+      }
+
+      if (act === "ptt") {
+        if (!pttEnabled) enablePTT();
+        else disablePTT();
+        return;
+      }
+
+      if (act === "file") {
+        fileInput.click();
+        return;
+      }
+
+      if (act === "mark") {
+        addHighlightPrompt();
+        return;
+      }
+
+      if (act === "high") {
+        toggleHighlightsPanel();
+        return;
+      }
 
       if (act === "dev") {
         try {
-          if (!camStream) toast("ℹ️ Tip: inicia cámara para ver nombres de dispositivos", 2000);
+          if (!localStream) toast("ℹ️ Tip: inicia cámara primero para ver nombres de dispositivos", 2000);
 
           const { cams, mics } = await listDevices();
+
           const camPick = cams.map((d, i) => `${i + 1}) ${d.label || "Cam"} `).join("\n");
           const micPick = mics.map((d, i) => `${i + 1}) ${d.label || "Mic"} `).join("\n");
 
@@ -1675,31 +1817,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateHUD() {
     if (!hud) return;
-
     const btn = (sel) => hud.wrap.querySelector(sel);
     const all = hud.wrap.querySelectorAll(".mm-hud__btn");
-    all.forEach(b => b.classList.remove("is-on", "is-off"));
+    all.forEach(b => b.classList.remove("is-on"));
 
     if (recOn) btn('[data-act="rec"]')?.classList.add("is-on");
     if (captionsEnabled) btn('[data-act="captions"]')?.classList.add("is-on");
     if (pttEnabled) btn('[data-act="ptt"]')?.classList.add("is-on");
 
-    // habilita / deshabilita swap según estado
-    const swapBtn = btn('[data-act="swap"]');
-    const canSwap = !!getScreenVideoTrack() && !!getCamVideoTrack();
-    if (swapBtn) swapBtn.classList.toggle("is-off", !canSwap);
-
-    // stop buttons "on" cuando existe esa fuente
-    const scrBtn = btn('[data-act="stopscr"]');
-    const camStopBtn = btn('[data-act="stopcam"]');
-    scrBtn && scrBtn.classList.toggle("is-on", !!getScreenVideoTrack());
-    camStopBtn && camStopBtn.classList.toggle("is-on", !!getCamVideoTrack());
-
-    // marca swap como "on" si estás enviando cam
-    if (canSwap && preferSendVideo === "cam") swapBtn?.classList.add("is-on");
+    // marca ON si hay highlights
+    if (highlights.length) btn('[data-act="mark"]')?.classList.add("is-on");
   }
 
   buildHUD();
+  ensureHighlightsUI();
 
   // ===== Events =====
   joinBtn && (joinBtn.onclick = () => joinRoom(roomInput ? roomInput.value : roomId));
@@ -1730,6 +1861,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Boot
   joinRoom(roomId);
-  connectWS();
   if (isMobile()) setStatus("📱 Móvil: Presentar = cámara trasera (no hay pantalla real en web móvil).");
 });
