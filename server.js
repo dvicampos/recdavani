@@ -1,3 +1,10 @@
+/* ============================
+   server.js (EDITADO) – FULL
+   - peers: ahora manda {id,name}
+   - rename, chat, reaction
+   - ping/pong
+   ============================ */
+
 const path = require("path");
 const express = require("express");
 const http = require("http");
@@ -24,39 +31,23 @@ function getRoom(roomId) {
 }
 
 function broadcast(room, data, exceptId = null) {
-  for (const [cid, info] of room.entries()) {
-    if (exceptId && cid === exceptId) continue;
+  for (const [pid, info] of room.entries()) {
+    if (exceptId && pid === exceptId) continue;
     safeSend(info.ws, data);
   }
 }
 
-// Heartbeat
-const HEARTBEAT_MS = 30000;
-const hb = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) {
-      try { ws.terminate(); } catch {}
-      return;
-    }
-    ws.isAlive = false;
-    try { ws.ping(); } catch {}
-  });
-}, HEARTBEAT_MS);
-
 wss.on("connection", (ws) => {
   ws._roomId = null;
   ws._clientId = null;
-  ws._name = null;
-
-  ws.isAlive = true;
-  ws.on("pong", () => (ws.isAlive = true));
 
   ws.on("message", (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
+    // ping/pong
     if (msg.type === "ping") {
-      safeSend(ws, { type: "pong", t: Date.now() });
+      safeSend(ws, { type: "pong", t: msg.t || Date.now() });
       return;
     }
 
@@ -68,18 +59,23 @@ wss.on("connection", (ws) => {
 
       ws._roomId = roomId;
       ws._clientId = clientId;
-      ws._name = name;
 
       const room = getRoom(roomId);
 
+      // peers existentes antes de meter al nuevo
       const peers = Array.from(room.entries()).map(([id, info]) => ({ id, name: info.name }));
+
       room.set(clientId, { ws, name });
 
+      // manda peers al nuevo
       safeSend(ws, { type: "peers", peers });
+
+      // avisa a todos
       broadcast(room, { type: "peer-joined", clientId, name }, clientId);
       return;
     }
 
+    // A partir de aquí requiere room + client
     const roomId = ws._roomId;
     const fromId = ws._clientId;
     if (!roomId || !fromId) return;
@@ -87,47 +83,52 @@ wss.on("connection", (ws) => {
     const room = rooms.get(roomId);
     if (!room) return;
 
+    // rename
     if (msg.type === "rename") {
-      const name = String(msg.name || "").trim().slice(0, 24);
-      if (!name) return;
       const info = room.get(fromId);
       if (!info) return;
+      const name = String(msg.name || "").trim().slice(0, 24) || fromId.slice(0, 8);
       info.name = name;
-      ws._name = name;
       broadcast(room, { type: "peer-meta", clientId: fromId, name });
       return;
     }
 
+    // chat broadcast
     if (msg.type === "chat") {
-      const text = String(msg.text || "").trim().slice(0, 240);
-      if (!text) return;
       const info = room.get(fromId);
-      const name = info?.name || ws._name || fromId.slice(0, 8);
-      broadcast(room, { type: "chat", from: fromId, name, text, ts: Date.now() });
+      const text = String(msg.text || "").slice(0, 240);
+      broadcast(room, {
+        type: "chat",
+        from: fromId,
+        name: info?.name || fromId.slice(0, 8),
+        text,
+        ts: Date.now()
+      });
       return;
     }
 
+    // reaction broadcast
     if (msg.type === "reaction") {
-      const emoji = String(msg.emoji || "✨").slice(0, 6);
-      broadcast(room, { type: "reaction", from: fromId, emoji, ts: Date.now() });
-      return;
-    }
-
-    // ✅ CAPTIONS (broadcast)
-    if (msg.type === "caption") {
-      const text = String(msg.text || "").trim().slice(0, 200);
-      if (!text) return;
       const info = room.get(fromId);
-      const name = info?.name || ws._name || fromId.slice(0, 8);
-      broadcast(room, { type: "caption", from: fromId, name, text, ts: Date.now() });
+      const emoji = String(msg.emoji || "✨").slice(0, 6);
+      broadcast(room, {
+        type: "reaction",
+        from: fromId,
+        name: info?.name || fromId.slice(0, 8),
+        emoji,
+        ts: Date.now()
+      });
       return;
     }
 
+    // señalización
     if (msg.type === "signal") {
       const toId = msg.to;
       if (!toId) return;
+
       const target = room.get(toId);
       if (!target) return;
+
       safeSend(target.ws, { type: "signal", from: fromId, data: msg.data });
       return;
     }
@@ -142,13 +143,12 @@ wss.on("connection", (ws) => {
     if (!room) return;
 
     room.delete(clientId);
+
     broadcast(room, { type: "peer-left", clientId });
 
     if (room.size === 0) rooms.delete(roomId);
   });
 });
-
-server.on("close", () => clearInterval(hb));
 
 const PORT = process.env.PORT || 3000;
 

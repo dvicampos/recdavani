@@ -1,21 +1,29 @@
-// public/app.js
+/* ============================
+   Mini Meet – app.js (FULL)
+   - Stop individual: pantalla, cámara, REC
+   - Chat + rename + reacciones
+   - Reconnect + heartbeat
+   - Stats (bitrate/rtt) en remotos
+   - Hotkeys: M mute, C cam, P presentar, S stop screen, V stop cam, R stop rec, Esc stopAll
+   ============================ */
+
 document.addEventListener("DOMContentLoaded", () => {
   const $ = (q) => document.querySelector(q);
 
   // ===== UI refs =====
-  const roomInput   = $("#roomInput");
-  const joinBtn     = $("#joinBtn");
-  const copyBtn     = $("#copyBtn");
+  const roomInput  = $("#roomInput");
+  const joinBtn    = $("#joinBtn");
+  const copyBtn    = $("#copyBtn");
 
-  const camBtn      = $("#camBtn");
-  const screenBtn   = $("#screenBtn");   // Pantalla (desktop)
-  const presentBtn  = $("#presentBtn");  // Presentar (móvil: cámara trasera)
-  const stopBtn     = $("#stopBtn");
-  const muteBtn     = $("#muteBtn");
+  const camBtn     = $("#camBtn");
+  const screenBtn  = $("#screenBtn");   // Pantalla (desktop) / smart
+  const presentBtn = $("#presentBtn");  // Móvil: cámara trasera
+  const stopBtn    = $("#stopBtn");     // STOP ALL (botón nuclear)
+  const muteBtn    = $("#muteBtn");
 
-  const localVideo  = $("#localVideo");
-  const remotes     = $("#remotes");
-  const statusEl    = $("#status");
+  const localVideo = $("#localVideo");
+  const remotes    = $("#remotes");
+  const statusEl   = $("#status");
 
   // ===== Small UI helpers =====
   function setStatus(t) {
@@ -31,7 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
       border: 1px solid rgba(255,255,255,.14);
       padding: 10px 12px; border-radius: 999px; z-index: 9999;
       backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-      font: 700 13px ui-sans-serif, system-ui; box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      font: 600 13px ui-sans-serif, system-ui; box-shadow: 0 10px 30px rgba(0,0,0,.35);
       max-width: min(92vw, 520px); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
     `;
     el.textContent = msg;
@@ -41,12 +49,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function randId() {
     return Math.random().toString(16).slice(2) + Date.now().toString(16);
-  }
-
-  function escapeHtml(s) {
-    return String(s || "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    }[c]));
   }
 
   // ===== Device helpers =====
@@ -74,6 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!name) return;
     localStorage.setItem("mm_nick", name);
   }
+
   let nick = getNick();
 
   // ===== State =====
@@ -85,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localVideo.muted = true;
     localVideo.playsInline = true;
 
-    // Doble click = fullscreen
+    // Double click fullscreen
     localVideo.addEventListener("dblclick", async () => {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -94,87 +97,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ICE (simple)
   const iceConfig = {
     iceServers: [
       { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }
     ]
   };
 
-  // ===== Inject WOW styles (para que funcione aunque no edites CSS) =====
-  function injectWowStyles() {
-    if (document.getElementById("mm-wow-style")) return;
-    const st = document.createElement("style");
-    st.id = "mm-wow-style";
-    st.textContent = `
-      .mm-hud{
-        position: fixed; left: 16px; bottom: 16px; z-index: 9999;
-        display: flex; gap: 10px; padding: 10px;
-        border-radius: 18px;
-        border: 1px solid rgba(255,255,255,.12);
-        background: rgba(0,0,0,.22);
-        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-        box-shadow: 0 18px 60px rgba(0,0,0,.45);
-      }
-      .mm-hud__btn{
-        border: 1px solid rgba(255,255,255,.14);
-        background: rgba(255,255,255,.08);
-        color: rgba(255,255,255,.92);
-        border-radius: 14px;
-        padding: 10px 12px;
-        font-weight: 900;
-        cursor: pointer;
-        transition: transform .12s ease, background .12s ease, border-color .12s ease;
-        user-select:none;
-      }
-      .mm-hud__btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.11); border-color: rgba(255,255,255,.22)}
-      .mm-hud__btn.is-on{
-        background: linear-gradient(135deg, rgba(124,92,255,.35), rgba(33,212,253,.25));
-        border-color: rgba(255,255,255,.24);
-      }
-
-      .remoteCard.is-speaking{
-        border-color: rgba(33,212,253,.35) !important;
-        box-shadow: 0 0 0 1px rgba(33,212,253,.18), 0 18px 60px rgba(0,0,0,.45) !important;
-      }
-      .remoteCard.is-spotlight{
-        border-color: rgba(124,92,255,.45) !important;
-        box-shadow: 0 0 0 1px rgba(124,92,255,.22), 0 20px 70px rgba(0,0,0,.55) !important;
-      }
-
-      .mm-caption{
-        position: absolute;
-        left: 12px; right: 12px; bottom: 58px;
-        padding: 10px 12px;
-        border-radius: 14px;
-        border: 1px solid rgba(255,255,255,.12);
-        background: rgba(0,0,0,.45);
-        color: rgba(255,255,255,.92);
-        font: 900 13px ui-sans-serif, system-ui;
-        opacity: 0;
-        transform: translateY(8px);
-        transition: all .18s ease;
-        pointer-events: none;
-        z-index: 999;
-      }
-      .mm-caption.show{opacity:1; transform: translateY(0)}
-      .mm-caption__name{color: rgba(33,212,253,.95)}
-
-      .tile.ptt-speaking{
-        outline: 2px solid rgba(33,212,253,.55);
-        outline-offset: 2px;
-      }
-
-      @media (max-width:520px){
-        .mm-hud{left: 12px; right: 12px; width: calc(100vw - 24px); justify-content: space-between}
-        .mm-hud__btn{flex:1; display:flex; justify-content:center}
-      }
-    `;
-    document.head.appendChild(st);
-  }
-  injectWowStyles();
-
-  // ===== WS (con reconexión + heartbeat) =====
+  // ===== WS (reconnect + heartbeat) =====
   let ws = null;
   let wsWanted = true;
   let reconnectTry = 0;
@@ -186,7 +115,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function startClientHeartbeat() {
     stopClientHeartbeat();
-    pingTimer = setInterval(() => wsSend({ type: "ping", t: Date.now() }), 20000);
+    pingTimer = setInterval(() => {
+      wsSend({ type: "ping", t: Date.now() });
+    }, 20000);
   }
   function stopClientHeartbeat() {
     if (pingTimer) clearInterval(pingTimer);
@@ -210,7 +141,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (msg.type === "pong") return;
 
       if (msg.type === "peers") {
-        // msg.peers: [{id,name}]
         for (const p of msg.peers) await ensurePeer(p.id, p.name);
         for (const p of msg.peers) await forceOffer(p.id);
         setRoomBadgeCount(msg.peers.length + 1);
@@ -255,12 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // ✅ CAPTIONS (server broadcast)
-      if (msg.type === "caption") {
-        showCaption(msg.from, msg.name || msg.from.slice(0, 8), msg.text || "");
-        return;
-      }
-
       if (msg.type === "signal") {
         await ensurePeer(msg.from);
         await onSignal(msg.from, msg.data);
@@ -289,10 +213,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let camStream = null;
   let screenStream = null;
   let localStream = null;
-
-  // mute + PTT
   let isMuted = false;
+
+  // ===== Push-to-talk (PTT) opcional: si lo activas luego =====
   let pttEnabled = false;
+
+  function setAudioEnabled(enabled) {
+    if (localStream) localStream.getAudioTracks().forEach(t => (t.enabled = !!enabled));
+  }
 
   async function setLocalPreview(stream) {
     if (!localVideo) return;
@@ -302,11 +230,6 @@ document.addEventListener("DOMContentLoaded", () => {
         try { await localVideo.play(); } catch {}
       };
     }
-  }
-
-  function setAudioEnabled(on) {
-    if (!localStream) return;
-    localStream.getAudioTracks().forEach(t => (t.enabled = !!on));
   }
 
   async function startCamera(preferBack = false) {
@@ -344,22 +267,19 @@ document.addEventListener("DOMContentLoaded", () => {
       throw lastErr || new Error("camera failed");
     }
 
-    // apaga stream previo de cam (si existía)
-    if (camStream) camStream.getTracks().forEach(t => t.stop());
-
     camStream = stream;
-    localStream = camStream;
 
-    // mute/PTT coherente
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else {
-      if (isMuted) setAudioEnabled(false);
+    // Si NO hay pantalla activa, la cámara pasa a ser localStream.
+    if (!screenStream) localStream = camStream;
+
+    // Respeta mute
+    if (pttEnabled) { isMuted = true; setAudioEnabled(false); }
+    else if (isMuted) setAudioEnabled(false);
+
+    if (!screenStream) {
+      await setLocalPreview(localStream);
+      await replaceTracksAll();
     }
-
-    await setLocalPreview(localStream);
-    await replaceTracksAll();
 
     setStatus(preferBack ? "📱 Presentando (cámara trasera + mic)." : "🎥 Cámara + mic listos.");
     toast(preferBack ? "📱 Cámara trasera" : "🎥 Cámara lista");
@@ -409,104 +329,79 @@ document.addEventListener("DOMContentLoaded", () => {
     if (screenVideoTrack) newStream.addTrack(screenVideoTrack);
     if (mixedAudioTrack) newStream.addTrack(mixedAudioTrack);
 
-    // apaga stream previo de pantalla si existía
-    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
-
     screenStream = display;
     localStream = newStream;
 
     if (!systemAudioTrack) setStatus("🖥️ Pantalla sin audio de sistema (fallback a mic).");
     else setStatus("🖥️ Pantalla + audio (si el navegador lo permite).");
 
-    // mute/PTT coherente
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else {
-      if (isMuted) setAudioEnabled(false);
-    }
+    // Respeta mute/PTT
+    if (pttEnabled) { isMuted = true; setAudioEnabled(false); }
+    else if (isMuted) setAudioEnabled(false);
 
     await setLocalPreview(localStream);
     await replaceTracksAll();
 
-    if (screenVideoTrack) screenVideoTrack.onended = () => stopPresent();
+    // 🔥 IMPORTANTE: si el usuario detiene desde el browser UI -> stop SOLO pantalla
+    if (screenVideoTrack) screenVideoTrack.onended = () => stopScreenOnly();
 
     toast("🖥️ Compartiendo pantalla");
   }
 
-  async function stopPresent() {
-    if (screenStream) {
-      screenStream.getTracks().forEach(t => t.stop());
-      screenStream = null;
+  // ===== STOP INDIVIDUAL =====
+  async function stopScreenOnly() {
+    if (!screenStream) {
+      toast("ℹ️ No hay pantalla activa");
+      return;
     }
+
+    // Detiene SOLO pantalla
+    screenStream.getTracks().forEach(t => t.stop());
+    screenStream = null;
+
+    // Vuelve a cámara si existe; si no, queda sin stream
     if (camStream) {
       localStream = camStream;
 
-      if (pttEnabled) {
-        isMuted = true;
-        setAudioEnabled(false);
-      } else if (isMuted) {
-        setAudioEnabled(false);
-      }
+      if (pttEnabled) { isMuted = true; setAudioEnabled(false); }
+      else if (isMuted) setAudioEnabled(false);
 
       await setLocalPreview(localStream);
       await replaceTracksAll();
-      setStatus("↩️ Volviste a cámara.");
-      toast("↩️ Volviste a cámara");
+      setStatus("🖥️ Pantalla detenida • Volviste a cámara");
+      toast("🖥️ Pantalla detenida");
     } else {
       localStream = null;
       await setLocalPreview(null);
       await replaceTracksAll();
-      setStatus("⛔ Sin stream.");
+      setStatus("🖥️ Pantalla detenida • Sin stream");
+      toast("🖥️ Pantalla detenida (sin cámara)");
     }
   }
 
-  async function stopAll() {
-    if (!confirm("¿Detener cámara/pantalla y desconectar peers?")) return;
-
-    if (camStream) camStream.getTracks().forEach(t => t.stop());
-    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
-    camStream = null; screenStream = null; localStream = null;
-
-    await setLocalPreview(null);
-    for (const pid of Array.from(peers.keys())) removePeer(pid);
-
-    // apaga rec/captions
-    if (recOn) stopRecording();
-    if (captionsEnabled) stopCaptions();
-
-    setStatus("🛑 Detenido.");
-    toast("🛑 Detenido");
-  }
-
-  function toggleMute() {
-    // Si PTT está activo, mute manual solo alterna “PTT ON/OFF” para no confundir
-    if (pttEnabled) {
-      disablePTT();
-      isMuted = false;
-      setAudioEnabled(true);
-      setStatus("🔊 Mute OFF");
-      toast("🎙️ PTT OFF");
-      updateMuteLabel();
-      updateHUD();
+  async function stopCameraOnly() {
+    if (!camStream) {
+      toast("ℹ️ No hay cámara activa");
       return;
     }
 
-    isMuted = !isMuted;
-    setAudioEnabled(!isMuted);
+    // Detiene SOLO cámara
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
 
-    setStatus(isMuted ? "🔇 Mute ON" : "🔊 Mute OFF");
-    toast(isMuted ? "🔇 Mute" : "🔊 Unmute");
-    updateMuteLabel();
-    updateHUD();
-  }
+    // Si estás en pantalla, no toques localStream
+    if (screenStream) {
+      setStatus("🎥 Cámara detenida • Sigues en pantalla");
+      toast("🎥 Cámara detenida");
+      return;
+    }
 
-  function updateMuteLabel() {
-    if (!muteBtn) return;
-    const t = muteBtn.querySelector(".dock__t");
-    if (!t) return;
-    if (pttEnabled) t.textContent = "PTT";
-    else t.textContent = isMuted ? "Unmute" : "Mute";
+    // Si NO hay pantalla, quedas sin stream
+    localStream = null;
+    await setLocalPreview(null);
+    await replaceTracksAll();
+    setStatus("🎥 Cámara detenida • Sin stream");
+    toast("🎥 Cámara detenida");
   }
 
   // ===== Present logic (smart) =====
@@ -517,11 +412,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Móvil: presenta con cámara trasera
     if (isMobile() || isIOS() || !supportsScreenShare()) {
       setStatus("📱 Móvil: Presentar = cámara trasera (web móvil no tiene compartir pantalla real).");
       return startCamera(true);
     }
 
+    // Desktop: pantalla
     try {
       return await startScreenDesktop();
     } catch (e) {
@@ -529,6 +426,104 @@ document.addEventListener("DOMContentLoaded", () => {
       setStatus("⚠️ Falló pantalla. Usando cámara como fallback.");
       return startCamera(false);
     }
+  }
+
+  // ===== STOP ALL (nuclear) =====
+  async function stopAll() {
+    if (!confirm("¿Detener cámara/pantalla y desconectar peers?")) return;
+
+    // detiene streams
+    if (camStream) camStream.getTracks().forEach(t => t.stop());
+    if (screenStream) screenStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+    screenStream = null;
+    localStream = null;
+
+    await setLocalPreview(null);
+
+    // detiene grabación si estaba activa
+    if (recOn) stopRecording();
+
+    // cierra peers
+    for (const pid of Array.from(peers.keys())) removePeer(pid);
+
+    setStatus("🛑 Detenido.");
+    toast("🛑 Todo detenido");
+  }
+
+  function toggleMute() {
+    isMuted = !isMuted;
+    setAudioEnabled(!isMuted);
+
+    setStatus(isMuted ? "🔇 Mute ON" : "🔊 Mute OFF");
+    const tEl = muteBtn?.querySelector?.(".dock__t");
+    if (tEl) tEl.textContent = isMuted ? "Unmute" : "Mute";
+  }
+
+  // ===== Recording (solo localStream) =====
+  let mr = null;
+  let recChunks = [];
+  let recOn = false;
+
+  function canRecord() {
+    return !!(localStream && window.MediaRecorder);
+  }
+
+  function startRecording() {
+    if (!canRecord()) {
+      toast("❌ No hay stream para grabar");
+      return;
+    }
+    if (recOn) {
+      toast("ℹ️ Ya estás grabando");
+      return;
+    }
+
+    // Nota: grabará el stream actual (pantalla o cámara)
+    const mimeCandidates = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm"
+    ];
+    const mime = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m)) || "";
+
+    recChunks = [];
+    mr = new MediaRecorder(localStream, mime ? { mimeType: mime } : undefined);
+
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recChunks.push(e.data);
+    };
+    mr.onstop = () => {
+      try {
+        const blob = new Blob(recChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `mini-meet-${roomId}-${Date.now()}.webm`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      } catch {}
+      recChunks = [];
+    };
+
+    mr.start(800);
+    recOn = true;
+    toast("⏺️ REC ON");
+    updateHUD();
+  }
+
+  // ✅ STOP REC SOLO (NO detiene cámara/pantalla)
+  function stopRecording() {
+    try { mr && mr.stop(); } catch {}
+    mr = null;
+    recOn = false;
+    toast("⏹️ REC OFF");
+    updateHUD();
+  }
+
+  function stopRecordingOnly() {
+    if (!recOn) return toast("ℹ️ No estás grabando");
+    stopRecording();
   }
 
   // ===== WebRTC (Perfect Negotiation) =====
@@ -543,7 +538,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return st?.name || peerId.slice(0, 8);
   }
 
-  // Room badge (sin tocar HTML: lo ponemos en el status)
   function setRoomBadgeCount(n) {
     if (statusEl && String(statusEl.textContent || "").startsWith("✅ Conectado")) {
       statusEl.textContent = `✅ Conectado • ${clientId.slice(0, 8)} • room ${roomId} • 👥 ${n}`;
@@ -581,7 +575,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 900);
   }
 
-  // ===== Chat (inyectado, sin cambiar HTML) =====
+  // ===== Chat (inyectado, sin tocar HTML) =====
   let chatUI = null;
 
   function miniIconBtnCss() {
@@ -590,7 +584,6 @@ document.addEventListener("DOMContentLoaded", () => {
       border: 1px solid rgba(255,255,255,.14);
       background: rgba(255,255,255,.08);
       color: rgba(255,255,255,.92);
-      font-weight:900;
     `;
   }
 
@@ -601,7 +594,7 @@ document.addEventListener("DOMContentLoaded", () => {
     wrap.style.cssText = `
       position: fixed; right: 16px; bottom: 16px; z-index: 9998;
       width: min(360px, calc(100vw - 32px));
-      font: 700 13px ui-sans-serif, system-ui;
+      font: 600 13px ui-sans-serif, system-ui;
     `;
 
     const btn = document.createElement("button");
@@ -615,7 +608,6 @@ document.addEventListener("DOMContentLoaded", () => {
       cursor: pointer;
       backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       box-shadow: 0 16px 45px rgba(0,0,0,.45);
-      font-weight:900;
     `;
 
     const panel = document.createElement("div");
@@ -633,7 +625,6 @@ document.addEventListener("DOMContentLoaded", () => {
       padding: 10px 12px; display:flex; align-items:center; justify-content:space-between;
       border-bottom: 1px solid rgba(255,255,255,.08);
       color: rgba(255,255,255,.86);
-      font-weight:900;
     `;
     head.innerHTML = `<span>Chat de sala</span>`;
 
@@ -688,7 +679,6 @@ document.addEventListener("DOMContentLoaded", () => {
       flex:1; border: 1px solid rgba(255,255,255,.14);
       background: rgba(0,0,0,.18); color: rgba(255,255,255,.92);
       border-radius: 14px; padding: 10px 12px; outline:none;
-      font-weight:800;
     `;
 
     const send = document.createElement("button");
@@ -699,7 +689,6 @@ document.addEventListener("DOMContentLoaded", () => {
       border: 1px solid rgba(255,255,255,.14);
       background: rgba(255,255,255,.08);
       color: rgba(255,255,255,.92);
-      font-weight:900;
     `;
 
     form.appendChild(input);
@@ -731,6 +720,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return chatUI;
   }
 
+  function escapeHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
   function addChatLine({ mine, name, text, ts }) {
     const ui = ensureChatUI();
     const row = document.createElement("div");
@@ -749,37 +744,13 @@ document.addEventListener("DOMContentLoaded", () => {
       overflow-wrap: anywhere;
     `;
 
-    row.innerHTML = `
-      <div style="font-size:11px;color:rgba(255,255,255,.65);margin-bottom:4px;font-weight:900;">
+    row.innerHTML = `<div style="font-size:11px;color:rgba(255,255,255,.65);margin-bottom:4px;">
         ${escapeHtml(name)} • ${time}
       </div>
-      <div style="font-size:13px;font-weight:800">${escapeHtml(text)}</div>
-    `;
+      <div style="font-size:13px;font-weight:650">${escapeHtml(text)}</div>`;
 
     ui.log.appendChild(row);
     ui.log.scrollTop = ui.log.scrollHeight;
-  }
-
-  // ===== Captions overlay =====
-  function showCaption(peerId, name, text) {
-    const st = peers.get(peerId);
-    const host = st?.cardEl || document.querySelector(".tile") || document.body;
-
-    let cap = host.querySelector(".mm-caption");
-    if (!cap) {
-      cap = document.createElement("div");
-      cap.className = "mm-caption";
-      host.appendChild(cap);
-    }
-
-    // asegura relative
-    const prevPos = getComputedStyle(host).position;
-    if (prevPos === "static") host.style.position = "relative";
-
-    cap.innerHTML = `<span class="mm-caption__name">${escapeHtml(name)}:</span> ${escapeHtml(text)}`;
-    cap.classList.add("show");
-    clearTimeout(cap._t);
-    cap._t = setTimeout(() => cap.classList.remove("show"), 1600);
   }
 
   // ===== Remote cards =====
@@ -868,15 +839,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const pc = new RTCPeerConnection(iceConfig);
-
-    // ✅ DataChannel P2P (negotiated) para files/commands
-    const dc = pc.createDataChannel("mm-data", { negotiated: true, id: 0 });
-
     const ui = createRemoteCard(peerId, name);
 
     const st = {
       pc,
-      dc,
       name: name || peerId.slice(0, 8),
       polite: isPoliteFor(peerId),
       makingOffer: false,
@@ -886,11 +852,10 @@ document.addEventListener("DOMContentLoaded", () => {
       remoteStream: new MediaStream(),
       lastBytes: 0,
       lastTs: 0,
+      _statsTimer: null,
       ...ui
     };
     peers.set(peerId, st);
-
-    setupDataChannel(peerId);
 
     const vTrans = pc.addTransceiver("video", { direction: "sendrecv" });
     const aTrans = pc.addTransceiver("audio", { direction: "sendrecv" });
@@ -990,15 +955,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function removePeer(peerId) {
     const st = peers.get(peerId);
     if (!st) return;
-
     try { st.pc.close(); } catch {}
-    st._statsTimer && clearInterval(st._statsTimer);
-
-    // limpia VAD
-    if (vad && vad.has(peerId)) {
-      try { vad.delete(peerId); } catch {}
-    }
-
+    if (st._statsTimer) clearInterval(st._statsTimer);
     st.cardEl?.remove();
     peers.delete(peerId);
   }
@@ -1076,7 +1034,63 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ===== Keyboard shortcuts =====
+  // ===== HUD (botones extra sin tocar HTML) =====
+  let hud = null;
+
+  function updateHUD() {
+    if (!hud) return;
+    hud.rec.textContent = recOn ? "⏹ Stop REC (R)" : "⏺ REC (R)";
+    hud.rec.title = recOn ? "Detener grabación" : "Iniciar grabación";
+  }
+
+  function ensureHUD() {
+    if (hud) return hud;
+
+    const wrap = document.createElement("div");
+    wrap.style.cssText = `
+      position: fixed; left: 16px; bottom: 16px; z-index: 9997;
+      display:flex; flex-direction:column; gap:10px;
+      width: min(260px, calc(100vw - 32px));
+      font: 700 12px ui-sans-serif, system-ui;
+    `;
+
+    const mkBtn = (label) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.style.cssText = `
+        width: 100%; padding: 10px 12px; border-radius: 14px;
+        border: 1px solid rgba(255,255,255,.14);
+        background: rgba(255,255,255,.08);
+        color: rgba(255,255,255,.92);
+        cursor:pointer;
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 16px 45px rgba(0,0,0,.45);
+      `;
+      return b;
+    };
+
+    const stopScreen = mkBtn("🖥 Stop Screen (S)");
+    stopScreen.onclick = () => stopScreenOnly();
+
+    const stopCam = mkBtn("🎥 Stop Cam (V)");
+    stopCam.onclick = () => stopCameraOnly();
+
+    const rec = mkBtn("⏺ REC (R)");
+    rec.onclick = () => (recOn ? stopRecordingOnly() : startRecording());
+
+    wrap.appendChild(stopScreen);
+    wrap.appendChild(stopCam);
+    wrap.appendChild(rec);
+
+    document.body.appendChild(wrap);
+
+    hud = { wrap, stopScreen, stopCam, rec };
+    updateHUD();
+    return hud;
+  }
+
+  // ===== Hotkeys =====
   function bindHotkeys() {
     window.addEventListener("keydown", (e) => {
       if (e.target && ["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
@@ -1084,476 +1098,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "m" || e.key === "M") toggleMute();
       if (e.key === "c" || e.key === "C") startCamera(false).catch(() => {});
       if (e.key === "p" || e.key === "P") startPresentSmart().catch(() => {});
+      if (e.key === "s" || e.key === "S") stopScreenOnly().catch(() => {});
+      if (e.key === "v" || e.key === "V") stopCameraOnly().catch(() => {});
+      if (e.key === "r" || e.key === "R") (recOn ? stopRecordingOnly() : startRecording());
       if (e.key === "Escape") stopAll().catch(() => {});
     });
   }
-
-  // =========================================================
-  // WOW PACK: VAD + Spotlight + Recorder + Device Picker
-  //         + Push-to-talk + Captions + File Transfer (P2P)
-  // =========================================================
-
-  // ----- AudioContext (para VAD) -----
-  let audioCtx = null;
-  function ensureAudioCtx() {
-    if (audioCtx) return audioCtx;
-    try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    } catch {
-      audioCtx = null;
-    }
-    return audioCtx;
-  }
-
-  // Resume after first gesture (iOS)
-  window.addEventListener("click", () => {
-    const ctx = ensureAudioCtx();
-    if (ctx && ctx.state === "suspended") ctx.resume().catch(()=>{});
-  }, { once: true });
-
-  // ----- Speaking indicator / VAD -----
-  const vad = new Map(); // peerId -> { analyser, tmp, lastSpeakTs }
-  let spotlightId = null;
-
-  function rmsFromTimeDomain(arr) {
-    let sum = 0;
-    for (let i = 0; i < arr.length; i++) {
-      const v = (arr[i] - 128) / 128;
-      sum += v * v;
-    }
-    return Math.sqrt(sum / arr.length);
-  }
-
-  function ensureVAD(peerId, stream) {
-    if (!stream) return;
-    const st = peers.get(peerId);
-    if (!st || vad.has(peerId)) return;
-
-    const ctx = ensureAudioCtx();
-    if (!ctx) return;
-
-    try {
-      // solo si hay audio track
-      const a = stream.getAudioTracks()[0];
-      if (!a) return;
-
-      const src = ctx.createMediaStreamSource(new MediaStream([a]));
-      const an = ctx.createAnalyser();
-      an.fftSize = 512;
-      src.connect(an);
-
-      vad.set(peerId, {
-        analyser: an,
-        tmp: new Uint8Array(an.fftSize),
-        lastSpeakTs: 0
-      });
-    } catch {}
-  }
-
-  // loop VAD + auto-spotlight
-  setInterval(() => {
-    let best = { id: null, level: 0 };
-
-    for (const [peerId, v] of vad.entries()) {
-      const st = peers.get(peerId);
-      if (!st) continue;
-
-      v.analyser.getByteTimeDomainData(v.tmp);
-      const level = rmsFromTimeDomain(v.tmp);
-
-      const speaking = level > 0.05;
-      st.cardEl.classList.toggle("is-speaking", speaking);
-      if (speaking) v.lastSpeakTs = Date.now();
-
-      if (level > best.level) best = { id: peerId, level };
-    }
-
-    if (best.id && best.level > 0.075) {
-      if (spotlightId !== best.id) {
-        if (spotlightId && peers.get(spotlightId)) peers.get(spotlightId).cardEl.classList.remove("is-spotlight");
-        spotlightId = best.id;
-
-        const st = peers.get(spotlightId);
-        if (st) {
-          st.cardEl.classList.add("is-spotlight");
-          if (remotes && st.cardEl.parentElement === remotes) remotes.prepend(st.cardEl);
-        }
-      }
-    }
-  }, 260);
-
-  // cada poco intenta enganchar VAD cuando ya hay stream
-  setInterval(() => {
-    for (const [peerId, st] of peers.entries()) {
-      if (st?.remoteStream) ensureVAD(peerId, st.remoteStream);
-    }
-  }, 700);
-
-  // ----- Captions (Web Speech API) -----
-  let rec = null;
-  let captionsEnabled = false;
-  let lastCaptionSend = 0;
-
-  function supportsSpeech() {
-    return "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
-  }
-
-  function startCaptions() {
-    if (!supportsSpeech()) return toast("❌ Tu navegador no soporta subtítulos (SpeechRecognition)");
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    rec = new SR();
-    rec.lang = "es-MX";
-    rec.continuous = true;
-    rec.interimResults = true;
-
-    captionsEnabled = true;
-
-    rec.onresult = (e) => {
-      let finalText = "";
-      let interim = "";
-
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0]?.transcript || "";
-        if (e.results[i].isFinal) finalText += t;
-        else interim += t;
-      }
-
-      const text = (finalText || interim).trim();
-      if (!text) return;
-
-      // throttle: manda cada 700ms si es interim; finales siempre
-      const now = Date.now();
-      const isFinal = !!finalText.trim();
-      if (!isFinal && now - lastCaptionSend < 700) return;
-      lastCaptionSend = now;
-
-      wsSend({ type: "caption", text });
-      showCaption(clientId, nick, text);
-    };
-
-    rec.onerror = () => {};
-    rec.onend = () => {
-      if (captionsEnabled) {
-        try { rec.start(); } catch {}
-      }
-    };
-
-    try {
-      rec.start();
-      toast("📝 Subtítulos ON");
-    } catch {
-      toast("⚠️ No se pudieron iniciar subtítulos");
-    }
-
-    updateHUD();
-  }
-
-  function stopCaptions() {
-    captionsEnabled = false;
-    try { rec && rec.stop(); } catch {}
-    rec = null;
-    toast("📝 Subtítulos OFF");
-    updateHUD();
-  }
-
-  // ----- Recorder (MediaRecorder) -----
-  let mr = null;
-  let recChunks = [];
-  let recOn = false;
-
-  function startRecording() {
-    if (!localStream) return toast("❌ No hay stream. Inicia cámara/pantalla.");
-    if (!window.MediaRecorder) return toast("❌ MediaRecorder no disponible.");
-
-    recChunks = [];
-    const mime =
-      MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" :
-      MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" :
-      "video/webm";
-
-    mr = new MediaRecorder(localStream, { mimeType: mime });
-
-    mr.ondataavailable = (e) => e.data && e.data.size && recChunks.push(e.data);
-    mr.onstop = () => {
-      const blob = new Blob(recChunks, { type: mime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `minimeet_${roomId}_${Date.now()}.webm`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1200);
-      toast("🎬 Video descargado");
-    };
-
-    mr.start(800);
-    recOn = true;
-    toast("🔴 REC ON");
-    updateHUD();
-  }
-
-  function stopRecording() {
-    try { mr && mr.stop(); } catch {}
-    mr = null;
-    recOn = false;
-    toast("⏹️ REC OFF");
-    updateHUD();
-  }
-
-  // ----- Device picker (switch cam/mic live) -----
-  async function listDevices() {
-    const devs = await navigator.mediaDevices.enumerateDevices();
-    return {
-      cams: devs.filter(d => d.kind === "videoinput"),
-      mics: devs.filter(d => d.kind === "audioinput")
-    };
-  }
-
-  async function switchDevices({ camId = null, micId = null } = {}) {
-    const constraints = {
-      video: camId ? { deviceId: { exact: camId }, width: { ideal: 1280 }, height: { ideal: 720 } } : true,
-      audio: micId ? { deviceId: { exact: micId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } : true
-    };
-
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-    if (camStream) camStream.getTracks().forEach(t => t.stop());
-    camStream = stream;
-    localStream = stream;
-
-    if (pttEnabled) {
-      isMuted = true;
-      setAudioEnabled(false);
-    } else if (isMuted) {
-      setAudioEnabled(false);
-    }
-
-    await setLocalPreview(localStream);
-    await replaceTracksAll();
-    toast("🎛️ Dispositivos cambiados");
-  }
-
-  // ----- Push-to-talk (SPACE) -----
-  function enablePTT() {
-    pttEnabled = true;
-    isMuted = true;
-    setAudioEnabled(false);
-    setStatus("🎙️ PTT ON (mantén SPACE para hablar)");
-    toast("🎙️ Push-to-talk ON");
-    updateMuteLabel();
-    updateHUD();
-  }
-
-  function disablePTT() {
-    pttEnabled = false;
-    setAudioEnabled(!isMuted);
-    toast("🎙️ Push-to-talk OFF");
-    updateMuteLabel();
-    updateHUD();
-
-    const tile = document.querySelector(".tile");
-    tile && tile.classList.remove("ptt-speaking");
-  }
-
-  window.addEventListener("keydown", (e) => {
-    if (!pttEnabled) return;
-    if (e.code !== "Space") return;
-    if (e.repeat) return;
-
-    const tag = (e.target && e.target.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-
-    setAudioEnabled(true);
-    const tile = document.querySelector(".tile");
-    tile && tile.classList.add("ptt-speaking");
-  });
-
-  window.addEventListener("keyup", (e) => {
-    if (!pttEnabled) return;
-    if (e.code !== "Space") return;
-
-    setAudioEnabled(false);
-    const tile = document.querySelector(".tile");
-    tile && tile.classList.remove("ptt-speaking");
-  });
-
-  // ----- DataChannel P2P: files (chunked) -----
-  const fileRx = new Map(); // peerId -> { name, size, chunks:[], received }
-  const CHUNK = 16 * 1024;
-
-  function setupDataChannel(peerId) {
-    const st = peers.get(peerId);
-    if (!st?.dc) return;
-
-    st.dc.binaryType = "arraybuffer";
-
-    st.dc.onopen = () => {};
-    st.dc.onclose = () => {};
-
-    st.dc.onmessage = (ev) => {
-      // control JSON string
-      if (typeof ev.data === "string") {
-        let m = null;
-        try { m = JSON.parse(ev.data); } catch { return; }
-
-        if (m.t === "file-meta") {
-          fileRx.set(peerId, { name: m.name, size: m.size, chunks: [], received: 0 });
-          toast(`📥 Recibiendo: ${m.name} (${Math.round(m.size / 1024)} KB)`);
-          return;
-        }
-
-        if (m.t === "file-done") {
-          const rx = fileRx.get(peerId);
-          if (!rx) return;
-
-          const blob = new Blob(rx.chunks);
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = rx.name || `file_${Date.now()}`;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 1200);
-
-          toast(`✅ Archivo listo: ${rx.name}`);
-          fileRx.delete(peerId);
-          setStatus("✅ Recibido");
-          return;
-        }
-
-        return;
-      }
-
-      // binary chunk
-      const rx = fileRx.get(peerId);
-      if (!rx) return;
-
-      rx.chunks.push(ev.data);
-      rx.received += ev.data.byteLength;
-
-      const pct = Math.min(100, Math.round((rx.received / rx.size) * 100));
-      setStatus(`📥 ${rx.name} • ${pct}%`);
-    };
-  }
-
-  async function sendFileToAll(file) {
-    if (!file) return;
-    const buf = await file.arrayBuffer();
-
-    let sentTo = 0;
-    for (const [, st] of peers.entries()) {
-      if (!st?.dc || st.dc.readyState !== "open") continue;
-
-      try {
-        st.dc.send(JSON.stringify({ t: "file-meta", name: file.name, size: buf.byteLength }));
-        for (let off = 0; off < buf.byteLength; off += CHUNK) {
-          st.dc.send(buf.slice(off, off + CHUNK));
-        }
-        st.dc.send(JSON.stringify({ t: "file-done" }));
-        sentTo++;
-      } catch {}
-    }
-
-    toast(sentTo ? `📤 Enviado a ${sentTo}: ${file.name}` : "⚠️ No hay DataChannels listos");
-  }
-
-  // ----- Floating HUD (REC / CC / PTT / DEV / FILE) -----
-  let hud = null;
-  let fileInput = null;
-
-  function buildHUD() {
-    if (hud) return hud;
-
-    const wrap = document.createElement("div");
-    wrap.className = "mm-hud";
-    wrap.innerHTML = `
-      <button class="mm-hud__btn" data-act="rec">● REC</button>
-      <button class="mm-hud__btn" data-act="captions">CC</button>
-      <button class="mm-hud__btn" data-act="ptt">PTT</button>
-      <button class="mm-hud__btn" data-act="dev">⚙</button>
-      <button class="mm-hud__btn" data-act="file">📎</button>
-    `;
-
-    fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.style.display = "none";
-    fileInput.onchange = () => {
-      const f = fileInput.files && fileInput.files[0];
-      if (f) sendFileToAll(f);
-      fileInput.value = "";
-    };
-
-    document.body.appendChild(wrap);
-    document.body.appendChild(fileInput);
-
-    wrap.addEventListener("click", async (e) => {
-      const b = e.target.closest("button");
-      if (!b) return;
-      const act = b.getAttribute("data-act");
-
-      if (act === "rec") {
-        if (!recOn) startRecording();
-        else stopRecording();
-        return;
-      }
-
-      if (act === "captions") {
-        if (!captionsEnabled) startCaptions();
-        else stopCaptions();
-        return;
-      }
-
-      if (act === "ptt") {
-        if (!pttEnabled) enablePTT();
-        else disablePTT();
-        return;
-      }
-
-      if (act === "file") {
-        fileInput.click();
-        return;
-      }
-
-      if (act === "dev") {
-        try {
-          // TIP: para ver labels en devices, a veces necesitas permisos primero.
-          if (!localStream) toast("ℹ️ Tip: inicia cámara primero para ver nombres de dispositivos", 2000);
-
-          const { cams, mics } = await listDevices();
-
-          const camPick = cams.map((d, i) => `${i + 1}) ${d.label || "Cam"} `).join("\n");
-          const micPick = mics.map((d, i) => `${i + 1}) ${d.label || "Mic"} `).join("\n");
-
-          const camIdx = prompt(`Elige CÁMARA (número) o vacío:\n${camPick}`, "");
-          const micIdx = prompt(`Elige MIC (número) o vacío:\n${micPick}`, "");
-
-          const camId = camIdx ? cams[Number(camIdx) - 1]?.deviceId : null;
-          const micId = micIdx ? mics[Number(micIdx) - 1]?.deviceId : null;
-
-          if (camId || micId) await switchDevices({ camId, micId });
-        } catch {
-          toast("⚠️ No se pudo abrir selector (da permisos primero)");
-        }
-        return;
-      }
-    });
-
-    hud = { wrap };
-    updateHUD();
-    return hud;
-  }
-
-  function updateHUD() {
-    if (!hud) return;
-    const btn = (sel) => hud.wrap.querySelector(sel);
-    const all = hud.wrap.querySelectorAll(".mm-hud__btn");
-    all.forEach(b => b.classList.remove("is-on"));
-
-    if (recOn) btn('[data-act="rec"]')?.classList.add("is-on");
-    if (captionsEnabled) btn('[data-act="captions"]')?.classList.add("is-on");
-    if (pttEnabled) btn('[data-act="ptt"]')?.classList.add("is-on");
-  }
-
-  buildHUD();
 
   // ===== Events =====
   joinBtn && (joinBtn.onclick = () => joinRoom(roomInput ? roomInput.value : roomId));
@@ -1567,12 +1117,12 @@ document.addEventListener("DOMContentLoaded", () => {
     startCamera(false).catch((e) => setStatus(`❌ Cámara: ${e?.name || "error"}`))
   );
 
-  // Desktop: Pantalla
+  // Desktop smart present
   screenBtn && (screenBtn.onclick = () =>
     startPresentSmart().catch((e) => setStatus(`❌ Presentar: ${e?.name || "error"}`))
   );
 
-  // Móvil: Presentar (trasera)
+  // Móvil: trasera
   presentBtn && (presentBtn.onclick = () =>
     startCamera(true).catch((e) => setStatus(`❌ Trasera: ${e?.name || "error"}`))
   );
@@ -1581,25 +1131,10 @@ document.addEventListener("DOMContentLoaded", () => {
   muteBtn && (muteBtn.onclick = () => toggleMute());
 
   bindHotkeys();
-  ensureChatUI(); // aparece botón “Chat”
-  updateMuteLabel();
+  ensureChatUI();
+  ensureHUD();
 
   // Boot
   joinRoom(roomId);
   if (isMobile()) setStatus("📱 Móvil: Presentar = cámara trasera (no hay pantalla real en web móvil).");
-
-  // ===== helper: copy room link =====
-  async function copyRoomLink() {
-    const url = new URL(location.href);
-    url.searchParams.set("room", roomId);
-    const text = url.toString();
-
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus("🔗 Link copiado.");
-      toast("🔗 Copiado al portapapeles");
-    } catch {
-      prompt("Copia el link:", text);
-    }
-  }
 });
