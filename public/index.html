@@ -1,187 +1,103 @@
 <!doctype html>
-<html lang="es-MX">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#07090d" />
-    <meta name="color-scheme" content="dark" />
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini Meet - WebRTC</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
 
-    <title>MiniMeet</title>
+<body>
+  <div class="bg">
+    <div class="blob blob--a"></div>
+    <div class="blob blob--b"></div>
+    <div class="blob blob--c"></div>
+    <div class="noise"></div>
+  </div>
 
-    <!-- Tu CSS pro -->
-    <link rel="stylesheet" href="/style.css" />
-
-    <!-- (Opcional) Favicon -->
-    <!-- <link rel="icon" href="/favicon.ico" /> -->
-  </head>
-
-  <body>
-    <!-- Ambient orb (innovador pero minimal) -->
-    <div class="ambient" aria-hidden="true">
-      <div class="ambient__orb ambient__orb--a"></div>
-      <div class="ambient__orb ambient__orb--b"></div>
-      <div class="ambient__orb ambient__orb--c"></div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand__mark">MM</div>
+      <div class="brand__text">
+        <div class="brand__name">Mini Meet</div>
+        <div class="brand__sub">WebRTC • ultra light</div>
+      </div>
     </div>
 
-    <!-- TOPBAR -->
-    <header class="topbar">
-      <div class="topbar__inner container">
-        <div class="brand">
-          <div class="brand__dot" aria-hidden="true"></div>
-          <div class="brand__txt">
-            <div class="brand__name">MiniMeet</div>
-            <div class="brand__sub">Streaming minimal • WebRTC</div>
-          </div>
+    <div class="roombar">
+      <div class="chip">
+        <span class="chip__label">Room</span>
+        <input id="roomInput" class="roombar__input" placeholder="ej: demo" />
+      </div>
+
+      <button id="joinBtn" class="btn btn--primary"><span class="btn__icon">↪</span>Entrar</button>
+      <button id="copyBtn" class="btn btn--ghost"><span class="btn__icon">🔗</span>Copiar link</button>
+    </div>
+  </header>
+
+  <main class="app">
+    <section class="stage">
+      <div class="stage__header">
+        <div class="title">
+          <h1 class="title__h">Tu sala</h1>
+          <p class="title__p">En móvil: usa “Presentar” (cámara trasera). En laptop: Pantalla + audio si el navegador lo permite.</p>
         </div>
 
-        <div class="room">
-          <label class="sr-only" for="roomInput">Room</label>
-          <input id="roomInput" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="room (ej. demo)" />
-
-          <button id="joinBtn" type="button" class="btn btn--primary" title="Entrar a la room">
-            Entrar
-          </button>
-
-          <button id="copyBtn" type="button" class="btn" title="Copiar link de la room">
-            Copiar link
-          </button>
-        </div>
-
-        <div class="statusWrap">
-          <div id="status" class="statusChip">Listo.</div>
+        <div class="statusPill">
+          <span class="dot"></span>
+          <span id="status" class="statusPill__text">Listo</span>
         </div>
       </div>
-    </header>
 
-    <!-- MAIN -->
-    <main class="main container">
-      <!-- Stage -->
-      <section class="stage">
-        <div class="stage__grid">
-          <!-- Local tile -->
-          <div class="tile stage__local">
-            <video id="localVideo" autoplay playsinline muted></video>
+      <div class="tile tile--local">
+        <div class="tile__top">
+          <div class="badge badge--local">Tú</div>
+          <div class="tile__meta"><span class="meta meta--hint">Preview</span></div>
+        </div>
 
-            <!-- overlays -->
-            <div class="stage__overlay">
-              <div class="chip">
-                <span class="chip__icon" aria-hidden="true">●</span>
-                <span class="chip__txt">Live</span>
-              </div>
+        <video id="localVideo" class="tile__video" autoplay playsinline muted></video>
 
-              <div class="chip chip--muted" title="Tip">
-                <span class="chip__txt">Doble click: Fullscreen</span>
-              </div>
-            </div>
+        <div class="dock" role="group" aria-label="Controles">
+          <button id="camBtn" class="dock__btn" title="Iniciar cámara">
+            <span class="dock__i">📷</span><span class="dock__t">Cámara</span>
+          </button>
 
-            <div class="stage__bottom">
-              <div class="me">
-                <div class="me__avatar" aria-hidden="true">👤</div>
-                <div class="me__meta">
-                  <div class="me__name">Tú</div>
-                  <div class="me__hint">Comparte pantalla o prende cámara</div>
-                </div>
-              </div>
+          <button id="screenBtn" class="dock__btn" title="Compartir pantalla + audio (desktop)">
+            <span class="dock__i">🖥️</span><span class="dock__t">Pantalla</span>
+          </button>
 
-              <div class="stage__miniTips">
-                <span class="pill">H = Highlight ⭐</span>
-                <span class="pill">L = Panel 📑</span>
-                <span class="pill">M = Mute</span>
-              </div>
-            </div>
+          <button id="presentBtn" class="dock__btn" title="Presentar (cámara trasera)">
+            <span class="dock__i">📡</span><span class="dock__t">Presentar</span>
+          </button>
+
+          <button id="muteBtn" class="dock__btn dock__btn--ghost" title="Mute / Unmute">
+            <span class="dock__i">🔇</span><span class="dock__t">Mute</span>
+          </button>
+
+          <button id="stopBtn" class="dock__btn dock__btn--danger" title="Detener todo">
+            <span class="dock__i">⛔</span><span class="dock__t">Detener</span>
+          </button>
+        </div>
+
+        <div class="tile__bottom">
+          <div class="note">
+            <span class="note__i">💡</span>
+            <span class="note__t">Para escuchar audio remoto, toca “Escuchar” en cada tile remoto.</span>
           </div>
-
-          <!-- Right panel (innovador pero minimal): “Quick actions” -->
-          <aside class="panel">
-            <div class="panel__head">
-              <div class="panel__title">Quick</div>
-              <div class="panel__sub">Acciones rápidas</div>
-            </div>
-
-            <div class="panel__grid">
-              <button class="qbtn" id="camBtn" type="button">
-                <span class="qbtn__icon" aria-hidden="true">🎥</span>
-                <span class="qbtn__txt">Cámara</span>
-              </button>
-
-              <button class="qbtn" id="screenBtn" type="button">
-                <span class="qbtn__icon" aria-hidden="true">🖥️</span>
-                <span class="qbtn__txt">Pantalla</span>
-              </button>
-
-              <button class="qbtn" id="presentBtn" type="button">
-                <span class="qbtn__icon" aria-hidden="true">📱</span>
-                <span class="qbtn__txt">Trasera</span>
-              </button>
-
-              <button class="qbtn qbtn--danger" id="stopBtn" type="button">
-                <span class="qbtn__icon" aria-hidden="true">⛔</span>
-                <span class="qbtn__txt">Stop</span>
-              </button>
-            </div>
-
-            <div class="panel__foot">
-              <button class="mute" id="muteBtn" type="button" title="Mute / Unmute">
-                <span class="mute__icon" aria-hidden="true">🎙️</span>
-                <span class="dock__t">Mute</span>
-              </button>
-
-              <div class="panel__note">
-                Tip: en iPhone, “Presentar” es cámara trasera (web móvil no comparte pantalla real).
-              </div>
-            </div>
-          </aside>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- Remotes -->
-      <section class="section">
-        <div class="section__head">
-          <h2 class="section__title">Sala</h2>
-          <div class="section__sub">Participantes (remotos)</div>
-        </div>
+    <aside class="sidebar">
+      <div class="sidebar__header">
+        <h2 class="sidebar__h">Participantes</h2>
+        <p class="sidebar__p">Dale “Escuchar” a un tile remoto para habilitar audio.</p>
+      </div>
 
-        <div id="remotes" class="remotes"></div>
-      </section>
-    </main>
+      <div id="remotes" class="remoteGrid"></div>
+    </aside>
+  </main>
 
-    <!-- Bottom Dock (si quieres mantener tus botones abajo también) -->
-    <nav class="dock" aria-label="Controles">
-      <button id="camBtn" type="button" class="dockBtn" title="Cámara">
-        <span aria-hidden="true">🎥</span>
-        <span class="dock__t">Cámara</span>
-      </button>
-
-      <button id="screenBtn" type="button" class="dockBtn" title="Pantalla (desktop)">
-        <span aria-hidden="true">🖥️</span>
-        <span class="dock__t">Pantalla</span>
-      </button>
-
-      <button id="presentBtn" type="button" class="dockBtn" title="Presentar (móvil trasera)">
-        <span aria-hidden="true">📱</span>
-        <span class="dock__t">Trasera</span>
-      </button>
-
-      <button id="muteBtn" type="button" class="dockBtn" title="Mute / Unmute">
-        <span aria-hidden="true">🎙️</span>
-        <span class="dock__t">Mute</span>
-      </button>
-
-      <button id="stopBtn" type="button" class="dockBtn dockBtn--danger" title="Stop">
-        <span aria-hidden="true">⛔</span>
-        <span class="dock__t">Stop</span>
-      </button>
-    </nav>
-
-    <!-- Script -->
-    <script src="/app.js" defer></script>
-
-    <!-- Accessibility helper -->
-    <style>
-      .sr-only{
-        position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
-        clip:rect(0,0,0,0);white-space:nowrap;border:0;
-      }
-    </style>
-  </body>
+  <script src="app.js?v=999"></script>
+</body>
 </html>
