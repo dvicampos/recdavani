@@ -589,3 +589,7 @@ img,video{max-width:100%}
 @media (prefers-reduced-motion: reduce){
   *{animation:none !important; transition:none !important}
 }
+.mm-hud__btn.is-gold{
+  background: linear-gradient(135deg, rgba(201,162,39,.28), rgba(226,200,106,.16));
+  border-color: rgba(201,162,39,.22);
+}
