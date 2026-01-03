@@ -78,6 +78,107 @@ document.addEventListener("DOMContentLoaded", () => {
     return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
+    // =========================
+  // 😄 Emoji Picker (Global)
+  // =========================
+  const EMOJI_GROUPS = {
+    "Reacciones": ["👍","👎","👏","🙌","🙏","🔥","✨","💯","✅","❌","🎉","⭐️","🚀","⚡️","🫡"],
+    "Caras": ["😀","😄","😁","😅","😂","🤣","🙂","😉","😍","😘","😎","🤯","😮","😱","😴","🤔","😤","😭","😡"],
+    "Amor": ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","💘","💝","💞","💕","💓","💗"],
+    "Tech": ["🎧","🎤","🎥","🖥️","📎","🧠","🤖","🧩","📌","📝","📣","🔔","🔒","⚙️"],
+  };
+
+  let emojiPopover = null;
+
+  function closeEmojiPicker() {
+    if (emojiPopover) emojiPopover.remove();
+    emojiPopover = null;
+    document.removeEventListener("mousedown", _emojiOutside, true);
+    document.removeEventListener("keydown", _emojiEsc, true);
+  }
+
+  function _emojiEsc(e){ if (e.key === "Escape") closeEmojiPicker(); }
+  function _emojiOutside(e){
+    if (!emojiPopover) return;
+    if (!emojiPopover.contains(e.target)) closeEmojiPicker();
+  }
+
+  function openEmojiPicker(anchorEl, { onPick, mode = "reaction" } = {}) {
+    closeEmojiPicker();
+
+    const pop = document.createElement("div");
+    pop.className = "mm-emoji";
+    pop.innerHTML = `
+      <div class="mm-emoji__head">
+        <div class="mm-emoji__title">Emojis</div>
+        <button class="mm-emoji__x" type="button" aria-label="Cerrar">✖</button>
+      </div>
+      <div class="mm-emoji__tabs"></div>
+      <div class="mm-emoji__grid"></div>
+      <div class="mm-emoji__hint">${mode === "chat" ? "Click para insertar en el mensaje" : "Click para reaccionar"}</div>
+    `;
+
+    const tabs = pop.querySelector(".mm-emoji__tabs");
+    const grid = pop.querySelector(".mm-emoji__grid");
+    const xBtn = pop.querySelector(".mm-emoji__x");
+
+    xBtn.onclick = () => closeEmojiPicker();
+
+    const groupNames = Object.keys(EMOJI_GROUPS);
+    let active = groupNames[0];
+
+    function renderTabs(){
+      tabs.innerHTML = "";
+      for (const g of groupNames){
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "mm-emoji__tab" + (g === active ? " is-on" : "");
+        b.textContent = g;
+        b.onclick = () => { active = g; renderTabs(); renderGrid(); };
+        tabs.appendChild(b);
+      }
+    }
+
+    function renderGrid(){
+      grid.innerHTML = "";
+      for (const emo of EMOJI_GROUPS[active]){
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "mm-emoji__btn";
+        b.textContent = emo;
+        b.onclick = () => {
+          try { onPick && onPick(emo); } finally { closeEmojiPicker(); }
+        };
+        grid.appendChild(b);
+      }
+    }
+
+    renderTabs();
+    renderGrid();
+
+    document.body.appendChild(pop);
+    emojiPopover = pop;
+
+    // posiciona cerca del botón
+    const r = anchorEl.getBoundingClientRect();
+    const pad = 10;
+    const w = 340;
+    const h = 330;
+
+    const left = Math.min(window.innerWidth - w - pad, Math.max(pad, r.right - w));
+    const topPreferUp = r.top - h - 10;
+    const top = topPreferUp > pad ? topPreferUp : Math.min(window.innerHeight - h - pad, r.bottom + 10);
+
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+
+    setTimeout(() => {
+      document.addEventListener("mousedown", _emojiOutside, true);
+      document.addEventListener("keydown", _emojiEsc, true);
+    }, 0);
+  }
+
+
   // ===== Device helpers =====
   function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -462,6 +563,219 @@ document.addEventListener("DOMContentLoaded", () => {
         .mm-hud{left: 12px; right: 12px; width: calc(100vw - 24px); justify-content: space-between}
         .mm-hud__btn{flex:1; display:flex; justify-content:center}
         .mm-high{left: 12px; right: 12px; width: calc(100vw - 24px)}
+      }
+            /* =========================
+         💬 Chat Minimal + Emoji Picker
+         ========================= */
+      .mm-chat{
+        position: fixed; right: 16px; bottom: 16px; z-index: 9998;
+        width: min(380px, calc(100vw - 32px));
+        font: 850 13px ui-sans-serif, system-ui;
+      }
+      .mm-chat__toggle{
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.05);
+        color: rgba(255,255,255,.92);
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: 0 16px 45px rgba(0,0,0,.55);
+        display:flex; align-items:center; justify-content:space-between;
+        gap: 10px;
+      }
+      .mm-chat__toggle strong{font-weight: 950; letter-spacing:.2px}
+      .mm-chat__toggle .mm-chat__pill{
+        padding: 6px 10px; border-radius: 999px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(0,0,0,.25);
+        color: rgba(255,255,255,.70);
+        font-weight: 900;
+        font-size: 12px;
+      }
+
+      .mm-chat__panel{
+        margin-top: 10px;
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(10,15,24,.78);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 18px 60px rgba(0,0,0,.60);
+        display: none;
+      }
+
+      .mm-chat__head{
+        padding: 10px 12px;
+        display:flex; align-items:center; justify-content:space-between;
+        gap: 10px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        background: rgba(255,255,255,.02);
+      }
+      .mm-chat__title{font-weight: 950; color: rgba(255,255,255,.90)}
+      .mm-chat__tools{display:flex; gap:8px; align-items:center;}
+      .mm-chat__icon{
+        width: 34px; height: 34px; border-radius: 12px; cursor:pointer;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.05);
+        color: rgba(255,255,255,.92);
+        font-weight:950;
+      }
+      .mm-chat__icon:hover{background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16)}
+
+      .mm-chat__log{
+        max-height: 280px;
+        overflow:auto;
+        padding: 10px 12px;
+        display:flex; flex-direction:column; gap: 8px;
+      }
+      .mm-chat__log::-webkit-scrollbar{width:10px}
+      .mm-chat__log::-webkit-scrollbar-thumb{
+        background: rgba(255,255,255,.14);
+        border-radius: 999px;
+        border: 2px solid rgba(0,0,0,.30);
+      }
+      .mm-chat__log::-webkit-scrollbar-track{background: rgba(0,0,0,.20)}
+
+      .mm-chat__msg{
+        max-width: 86%;
+        padding: 9px 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.04);
+        color: rgba(255,255,255,.92);
+        box-shadow: 0 10px 25px rgba(0,0,0,.26);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .mm-chat__msg.is-mine{
+        margin-left: auto;
+        background: rgba(31,107,255,.16);
+        border-color: rgba(31,107,255,.22);
+      }
+      .mm-chat__meta{
+        font-size:11px;
+        color: rgba(255,255,255,.62);
+        margin-bottom: 4px;
+        font-weight: 900;
+        display:flex; gap: 8px; align-items:center;
+      }
+      .mm-chat__name{color: rgba(226,200,106,.95); font-weight: 950;} /* dorado */
+      .mm-chat__time{opacity:.9}
+      .mm-chat__text{font-size:13px; font-weight: 850;}
+
+      .mm-chat__form{
+        display:flex; gap: 10px;
+        padding: 10px 12px;
+        border-top: 1px solid rgba(255,255,255,.08);
+        background: rgba(0,0,0,.20);
+        align-items:center;
+      }
+      .mm-chat__input{
+        flex:1;
+        border: 1px solid rgba(255,255,255,.12);
+        background: rgba(0,0,0,.22);
+        color: rgba(255,255,255,.92);
+        border-radius: 14px;
+        padding: 10px 12px;
+        outline:none;
+        font-weight: 850;
+      }
+      .mm-chat__input::placeholder{color: rgba(255,255,255,.40)}
+      .mm-chat__send{
+        padding: 10px 12px;
+        border-radius: 14px;
+        cursor:pointer;
+        border: 1px solid rgba(255,255,255,.12);
+        background: rgba(255,255,255,.06);
+        color: rgba(255,255,255,.92);
+        font-weight: 950;
+      }
+      .mm-chat__send:hover{background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16)}
+
+      /* Emoji popover */
+      .mm-emoji{
+        position: fixed;
+        width: 340px;
+        max-width: calc(100vw - 24px);
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,.12);
+        background: rgba(10,15,24,.92);
+        box-shadow: 0 20px 70px rgba(0,0,0,.65);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        z-index: 10001;
+      }
+      .mm-emoji__head{
+        display:flex; align-items:center; justify-content:space-between;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        background: rgba(255,255,255,.02);
+      }
+      .mm-emoji__title{font-weight: 950; color: rgba(255,255,255,.92)}
+      .mm-emoji__x{
+        width: 32px; height: 32px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.05);
+        color: rgba(255,255,255,.92);
+        cursor:pointer;
+        font-weight: 950;
+      }
+      .mm-emoji__tabs{
+        display:flex; gap: 8px;
+        padding: 10px 12px 0;
+        overflow:auto;
+      }
+      .mm-emoji__tab{
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.05);
+        color: rgba(255,255,255,.85);
+        border-radius: 999px;
+        padding: 8px 10px;
+        cursor:pointer;
+        font-weight: 900;
+        white-space: nowrap;
+      }
+      .mm-emoji__tab.is-on{
+        border-color: rgba(31,107,255,.22);
+        background: rgba(31,107,255,.14);
+      }
+      .mm-emoji__grid{
+        padding: 10px 12px 12px;
+        display:grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 8px;
+      }
+      .mm-emoji__btn{
+        border: 1px solid rgba(255,255,255,.10);
+        background: rgba(255,255,255,.04);
+        border-radius: 14px;
+        cursor:pointer;
+        font-size: 20px;
+        line-height: 1;
+        padding: 8px 0;
+      }
+      .mm-emoji__btn:hover{
+        background: rgba(255,255,255,.07);
+        border-color: rgba(255,255,255,.16);
+        transform: translateY(-1px);
+      }
+      .mm-emoji__hint{
+        padding: 0 12px 10px;
+        color: rgba(255,255,255,.60);
+        font-weight: 850;
+        font-size: 12px;
+      }
+
+      @media (max-width:520px){
+        .mm-chat{left: 12px; right: 12px; width: calc(100vw - 24px);}
+        .mm-emoji{width: calc(100vw - 24px);}
+        .mm-emoji__grid{grid-template-columns: repeat(7, 1fr);}
       }
     `;
     document.head.appendChild(st);
@@ -1104,57 +1418,32 @@ async function startMicOnly() {
     `;
   }
 
-  function ensureChatUI() {
+    function ensureChatUI() {
     if (chatUI) return chatUI;
 
     const wrap = document.createElement("div");
-    wrap.style.cssText = `
-      position: fixed; right: 16px; bottom: 16px; z-index: 9998;
-      width: min(360px, calc(100vw - 32px));
-      font: 800 13px ui-sans-serif, system-ui;
-    `;
+    wrap.className = "mm-chat";
 
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = "💬 Chat";
-    btn.style.cssText = `
-      width: 100%; padding: 10px 12px; border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.08);
-      color: rgba(255,255,255,.92);
-      cursor: pointer;
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      box-shadow: 0 16px 45px rgba(0,0,0,.45);
-      font-weight:900;
-    `;
+    btn.className = "mm-chat__toggle";
+    btn.innerHTML = `<strong>💬 Chat</strong><span class="mm-chat__pill">Sala</span>`;
 
     const panel = document.createElement("div");
-    panel.style.cssText = `
-      margin-top: 10px; border-radius: 18px; overflow: hidden;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.20);
-      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-      box-shadow: 0 18px 60px rgba(0,0,0,.45);
-      display: none;
-    `;
+    panel.className = "mm-chat__panel";
 
     const head = document.createElement("div");
-    head.style.cssText = `
-      padding: 10px 12px; display:flex; align-items:center; justify-content:space-between;
-      border-bottom: 1px solid rgba(255,255,255,.08);
-      color: rgba(255,255,255,.86);
-      font-weight:900;
-    `;
-    head.innerHTML = `<span>Chat de sala</span>`;
+    head.className = "mm-chat__head";
+    head.innerHTML = `<span class="mm-chat__title">Chat de sala</span>`;
 
     const tools = document.createElement("div");
-    tools.style.cssText = `display:flex; gap:8px; align-items:center;`;
+    tools.className = "mm-chat__tools";
 
     const rename = document.createElement("button");
     rename.type = "button";
+    rename.className = "mm-chat__icon";
     rename.textContent = "✏️";
     rename.title = "Cambiar nombre";
-    rename.style.cssText = miniIconBtnCss();
     rename.onclick = () => {
       const n = prompt("Tu nombre (máx 24):", nick);
       if (!n) return;
@@ -1164,53 +1453,57 @@ async function startMicOnly() {
       toast(`🪪 Ahora eres ${nick}`);
     };
 
-    const react = document.createElement("button");
-    react.type = "button";
-    react.textContent = "✨";
-    react.title = "Reacción";
-    react.style.cssText = miniIconBtnCss();
-    react.onclick = () => {
-      wsSend({ type: "reaction", emoji: "✨" });
-      showReaction(clientId, "✨");
+    const emojiBtn = document.createElement("button");
+    emojiBtn.type = "button";
+    emojiBtn.className = "mm-chat__icon";
+    emojiBtn.textContent = "😀";
+    emojiBtn.title = "Emojis";
+    emojiBtn.onclick = () => {
+      const ui = ensureChatUI();
+      openEmojiPicker(emojiBtn, {
+        mode: "chat",
+        onPick: (emo) => {
+          ui.input.value = (ui.input.value || "") + emo;
+          ui.input.focus();
+        }
+      });
+    };
+
+    const reactBtn = document.createElement("button");
+    reactBtn.type = "button";
+    reactBtn.className = "mm-chat__icon";
+    reactBtn.textContent = "✨";
+    reactBtn.title = "Reacción";
+    reactBtn.onclick = () => {
+      openEmojiPicker(reactBtn, {
+        mode: "reaction",
+        onPick: (emo) => {
+          wsSend({ type: "reaction", emoji: emo });
+          showReaction(clientId, emo);
+        }
+      });
     };
 
     tools.appendChild(rename);
-    tools.appendChild(react);
+    tools.appendChild(emojiBtn);
+    tools.appendChild(reactBtn);
     head.appendChild(tools);
 
     const log = document.createElement("div");
-    log.style.cssText = `
-      max-height: 260px; overflow:auto; padding: 10px 12px;
-      display:flex; flex-direction:column; gap: 8px;
-    `;
+    log.className = "mm-chat__log";
 
     const form = document.createElement("form");
-    form.style.cssText = `
-      display:flex; gap: 10px; padding: 10px 12px;
-      border-top: 1px solid rgba(255,255,255,.08);
-      background: rgba(255,255,255,.04);
-    `;
+    form.className = "mm-chat__form";
 
     const input = document.createElement("input");
+    input.className = "mm-chat__input";
     input.placeholder = "Escribe algo… (Enter)";
     input.maxLength = 240;
-    input.style.cssText = `
-      flex:1; border: 1px solid rgba(255,255,255,.14);
-      background: rgba(0,0,0,.18); color: rgba(255,255,255,.92);
-      border-radius: 14px; padding: 10px 12px; outline:none;
-      font-weight:800;
-    `;
 
     const send = document.createElement("button");
     send.type = "submit";
+    send.className = "mm-chat__send";
     send.textContent = "Enviar";
-    send.style.cssText = `
-      padding: 10px 12px; border-radius: 14px; cursor:pointer;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.08);
-      color: rgba(255,255,255,.92);
-      font-weight:900;
-    `;
 
     form.appendChild(input);
     form.appendChild(send);
@@ -1220,7 +1513,7 @@ async function startMicOnly() {
     panel.appendChild(form);
 
     btn.onclick = () => {
-      panel.style.display = panel.style.display === "none" ? "block" : "none";
+      panel.style.display = panel.style.display === "none" || !panel.style.display ? "block" : "none";
       if (panel.style.display === "block") input.focus();
     };
 
@@ -1241,29 +1534,19 @@ async function startMicOnly() {
     return chatUI;
   }
 
-  function addChatLine({ mine, name, text, ts }) {
+    function addChatLine({ mine, name, text, ts }) {
     const ui = ensureChatUI();
     const row = document.createElement("div");
+    row.className = "mm-chat__msg" + (mine ? " is-mine" : "");
+
     const time = new Date(ts || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-    row.style.cssText = `
-      align-self: ${mine ? "flex-end" : "flex-start"};
-      max-width: 85%;
-      padding: 8px 10px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: ${mine ? "rgba(124,92,255,.20)" : "rgba(0,0,0,.22)"};
-      color: rgba(255,255,255,.92);
-      box-shadow: 0 10px 25px rgba(0,0,0,.25);
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    `;
-
     row.innerHTML = `
-      <div style="font-size:11px;color:rgba(255,255,255,.65);margin-bottom:4px;font-weight:900;">
-        ${escapeHtml(name)} • ${time}
+      <div class="mm-chat__meta">
+        <span class="mm-chat__name">${escapeHtml(name)}</span>
+        <span class="mm-chat__time">• ${time}</span>
       </div>
-      <div style="font-size:13px;font-weight:800">${escapeHtml(text)}</div>
+      <div class="mm-chat__text">${escapeHtml(text)}</div>
     `;
 
     ui.log.appendChild(row);
@@ -1370,9 +1653,14 @@ async function startMicOnly() {
 
     const reactBtn = document.createElement("button");
     reactBtn.textContent = "✨ Reacción";
-    reactBtn.onclick = () => {
-      wsSend({ type: "reaction", emoji: "✨" });
-      showReaction(clientId, "✨");
+        reactBtn.onclick = () => {
+      openEmojiPicker(reactBtn, {
+        mode: "reaction",
+        onPick: (emo) => {
+          wsSend({ type: "reaction", emoji: emo });
+          showReaction(clientId, emo);
+        }
+      });
     };
 
     actions.appendChild(listenBtn);
