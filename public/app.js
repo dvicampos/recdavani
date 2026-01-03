@@ -772,6 +772,40 @@ document.addEventListener("DOMContentLoaded", () => {
     setStatus(preferBack ? "📱 Cámara trasera lista." : "🎥 Cámara lista.");
     toast(preferBack ? "📱 Cámara trasera" : "🎥 Cámara lista");
   }
+  // ===== Start MIC only (solo audio) =====
+async function startMicOnly() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus("❌ getUserMedia no disponible.");
+    throw new Error("getUserMedia not available");
+  }
+
+  // si no es https y no es localhost, en móvil no jala
+  if (!window.isSecureContext && location.hostname !== "localhost") {
+    setStatus("❌ Necesitas HTTPS para micrófono.");
+    alert("Abre el link con https (candadito). En móvil sin HTTPS no habrá permisos.");
+    return;
+  }
+
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+  } catch (e) {
+    setStatus(`❌ Mic: ${e?.name || "error"}`);
+    throw e;
+  }
+
+  // Reusa camStream como “fuente local” aunque no tenga video
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = stream;
+
+  await rebuildSendStreamAndUpdate();
+  setStatus("🎤 Mic listo (solo audio).");
+  toast("🎤 Mic ON");
+}
+
 
   async function stopScreenInternalsOnly() {
     if (screenStream) { try { screenStream.getTracks().forEach(t => t.stop()); } catch {} }
@@ -1615,6 +1649,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "h" || e.key === "H") addHighlightPrompt();
       if (e.key === "l" || e.key === "L") toggleHighlightsPanel();
       if (e.key === "t" || e.key === "T") exportTranscriptTxt();
+      if (e.key === "a" || e.key === "A") startMicOnly().catch(()=>{});
       if (e.key === "Escape") stopAll().catch(() => {});
     });
   }
@@ -2108,6 +2143,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <button class="mm-hud__btn" data-act="captions">CC</button>
       <button class="mm-hud__btn" data-act="ptt">PTT</button>
       <button class="mm-hud__btn" data-act="dev">⚙</button>
+      <button class="mm-hud__btn" data-act="mic">🎤 Mic</button>
       <button class="mm-hud__btn" data-act="file">📎</button>
       <button class="mm-hud__btn" data-act="mark">⭐</button>
       <button class="mm-hud__btn" data-act="high">📑</button>
@@ -2138,6 +2174,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (act === "rec") return (!recOn ? startRecording() : stopRecording());
       if (act === "captions") return (!captionsEnabled ? startCaptions() : stopCaptions());
       if (act === "ptt") return (!pttEnabled ? enablePTT() : disablePTT());
+      if (act === "mic") { startMicOnly().catch(()=>{}); return; }
       if (act === "file") return fileInput.click();
       if (act === "mark") return addHighlightPrompt();
       if (act === "high") return toggleHighlightsPanel();
@@ -2194,7 +2231,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const scrBtn = btn('[data-act="stopscr"]');
     const camStopBtn = btn('[data-act="stopcam"]');
     scrBtn && scrBtn.classList.toggle("is-on", !!getScreenVideoTrack());
-    camStopBtn && camStopBtn.classList.toggle("is-on", !!getCamVideoTrack());
+    camStopBtn && camStopBtn.classList.toggle("is-on", !!getCamVideoTrack() || !!getCamAudioTrack());
   }
 
   buildHUD();
