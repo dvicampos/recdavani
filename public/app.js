@@ -591,6 +591,23 @@ document.addEventListener("DOMContentLoaded", () => {
   let screenMixedAudioTrack = null;  // audio track mezcla
 
   let sendStream = null;             // ✅ stream estable que se ENVÍA
+    let dummyVideoTrack = null;
+
+  function ensureDummyVideoTrack(){
+    if (dummyVideoTrack) return dummyVideoTrack;
+
+    const c = document.createElement("canvas");
+    c.width = 1280; c.height = 720;
+    const g = c.getContext("2d");
+    g.fillStyle = "#000";
+    g.fillRect(0,0,c.width,c.height);
+
+    const s = c.captureStream(1); // 1fps
+    dummyVideoTrack = s.getVideoTracks()[0];
+    dummyVideoTrack.enabled = true;
+    return dummyVideoTrack;
+  }
+
   let preferSendVideo = "auto";      // "auto" | "screen" | "cam"
 
   // mute + PTT
@@ -643,7 +660,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const hasScreen = !!getScreenVideoTrack();
     const hasCam = !!getCamVideoTrack();
 
-    if (!hasScreen && !hasCam) return null;
+    if (!hasScreen && !hasCam) {
+      // si hay audio (mic-only) manda un video dummy para compatibilidad
+      if (getCamAudioTrack()) return ensureDummyVideoTrack();
+      return null;
+    }
     if (hasScreen && !hasCam) return getScreenVideoTrack();
     if (!hasScreen && hasCam) return getCamVideoTrack();
 
@@ -1293,6 +1314,14 @@ async function startMicOnly() {
     vid.playsInline = true;
     vid.muted = true;
 
+    const aud = document.createElement("audio");
+    aud.className = "remoteAudio";
+    aud.autoplay = true;
+    aud.playsInline = true;
+    aud.muted = true;
+    aud.style.display = "none";
+
+
     vid.addEventListener("dblclick", async () => {
       try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -1305,24 +1334,39 @@ async function startMicOnly() {
 
     const listenBtn = document.createElement("button");
     listenBtn.textContent = "🔊 Escuchar";
-    listenBtn.onclick = async () => {
+        listenBtn.onclick = async () => {
       try {
         vid.muted = false;
         vid.volume = 1;
-        await vid.play();
+
+        if (card._aud) {
+          card._aud.muted = false;
+          card._aud.volume = 1;
+          await card._aud.play().catch(()=>{});
+        }
+
+        await vid.play().catch(()=>{});
 
         listenBtn.textContent = "🔇 Silenciar";
         listenBtn.onclick = () => {
           vid.muted = true;
+          if (card._aud) card._aud.muted = true;
+
           listenBtn.textContent = "🔊 Escuchar";
           listenBtn.onclick = async () => {
-            try { vid.muted = false; await vid.play(); } catch {}
+            try {
+              vid.muted = false;
+              if (card._aud) card._aud.muted = false;
+              if (card._aud) await card._aud.play().catch(()=>{});
+              await vid.play().catch(()=>{});
+            } catch {}
           };
         };
       } catch {
         alert("El navegador bloqueó el audio. Toca otra vez “Escuchar”.");
       }
     };
+
 
     const reactBtn = document.createElement("button");
     reactBtn.textContent = "✨ Reacción";
@@ -1337,10 +1381,12 @@ async function startMicOnly() {
     card.appendChild(head);
     card.appendChild(vid);
     card.appendChild(actions);
+    card.appendChild(aud);
+    card._aud = aud;
 
     remotes && remotes.appendChild(card);
 
-    return { cardEl: card, remoteEl: vid, stEl: right, nameEl: left };
+    return { cardEl: card, remoteEl: vid, remoteAud: aud, stEl: right, nameEl: left };
   }
 
   // ===== DataChannel P2P: files (chunked + backpressure) =====
@@ -1468,11 +1514,18 @@ async function startMicOnly() {
     st.vSender = vTrans.sender;
     st.aSender = aTrans.sender;
 
-    pc.ontrack = (ev) => {
+        pc.ontrack = (ev) => {
       st.remoteStream.addTrack(ev.track);
+
       st.remoteEl.srcObject = st.remoteStream;
       st.remoteEl.onloadedmetadata = async () => { try { await st.remoteEl.play(); } catch {} };
+
+      if (st.remoteAud) {
+        st.remoteAud.srcObject = st.remoteStream;
+        st.remoteAud.onloadedmetadata = async () => { try { await st.remoteAud.play(); } catch {} };
+      }
     };
+
 
     pc.onicecandidate = (ev) => {
       if (ev.candidate) wsSend({ type: "signal", to: peerId, data: { kind: "ice", candidate: ev.candidate } });
