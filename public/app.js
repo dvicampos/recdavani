@@ -773,7 +773,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       @media (max-width:520px){
-        .mm-chat{left: 12px; right: 12px; width: 100%;}
+        .mm-chat{left: 12px; right: 12px; width: 93%;}
         .mm-emoji{width: calc(100vw - 24px);}
         .mm-emoji__grid{grid-template-columns: repeat(7, 1fr);}
       }
