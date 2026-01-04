@@ -1314,28 +1314,37 @@ async function startMicOnly() {
   }
 
   async function startPresentSmart() {
-    if (!window.isSecureContext && location.hostname !== "localhost") {
-      setStatus("❌ Necesitas HTTPS para cámara/pantalla en móvil.");
-      alert("Abre el link con https (candadito). En móvil sin HTTPS no habrá permisos.");
-      return;
-    }
+  if (!window.isSecureContext && location.hostname !== "localhost") {
+    setStatus("❌ Necesitas HTTPS para cámara/pantalla en móvil.");
+    alert("Abre el link con https (candadito). En móvil sin HTTPS no habrá permisos.");
+    return;
+  }
 
-    // toggle: si ya hay pantalla, detén
-    if (getScreenVideoTrack()) return stopScreenOnly();
+  // toggle: si ya hay pantalla, detén
+  if (getScreenVideoTrack()) return stopScreenOnly();
 
-    if (isMobile() || isIOS() || !supportsScreenShare()) {
-      setStatus("📱 Móvil: Presentar = cámara trasera (web móvil no tiene compartir pantalla real).");
-      return startCamera(true);
-    }
+  // iOS: no hay screen share real => usa cámara trasera
+  if (isIOS()) {
+    setStatus("📱 iOS: no soporta compartir pantalla web. Usando cámara trasera.");
+    return startCamera(true);
+  }
 
+  // Android / otros: intenta getDisplayMedia si existe
+  if (supportsScreenShare()) {
     try {
       return await startScreenDesktop();
     } catch (e) {
       console.warn(e);
-      setStatus("⚠️ Falló pantalla. Usando cámara como fallback.");
-      return startCamera(false);
+      setStatus("⚠️ Falló pantalla. Usando cámara trasera.");
+      return startCamera(true);
     }
   }
+
+  // fallback general
+  setStatus("📱 Este navegador no soporta compartir pantalla. Usando cámara trasera.");
+  return startCamera(true);
+}
+
 
   // =========================================================
   // ✅ WEBRTC (Perfect Negotiation) – usa sendStream en replaceTrack
