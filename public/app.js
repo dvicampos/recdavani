@@ -569,7 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
          ========================= */
       .mm-chat{
         position: fixed; right: 16px; bottom: 16px; z-index: 9998;
-        width: min(380px, calc(100vw - 32px));
+        width: 25%;
         font: 850 13px ui-sans-serif, system-ui;
       }
       .mm-chat__toggle{
@@ -773,7 +773,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       @media (max-width:520px){
-        .mm-chat{left: 12px; right: 12px; width: calc(100vw - 24px);}
+        .mm-chat{left: 12px; right: 12px; width: 25%;}
         .mm-emoji{width: calc(100vw - 24px);}
         .mm-emoji__grid{grid-template-columns: repeat(7, 1fr);}
       }
