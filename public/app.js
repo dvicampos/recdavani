@@ -773,7 +773,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       @media (max-width:520px){
-        .mm-chat{left: 12px; right: 12px; width: 25%;}
+        .mm-chat{left: 12px; right: 12px; width: 100%;}
         .mm-emoji{width: calc(100vw - 24px);}
         .mm-emoji__grid{grid-template-columns: repeat(7, 1fr);}
       }
@@ -2480,6 +2480,7 @@ async function startMicOnly() {
     const wrap = document.createElement("div");
     wrap.className = "mm-hud";
     wrap.innerHTML = `
+      <button class="mm-hud__btn" data-act="hud">▾</button>
       <button class="mm-hud__btn" data-act="rec">● REC</button>
       <button class="mm-hud__btn" data-act="captions">CC</button>
       <button class="mm-hud__btn" data-act="ptt">PTT</button>
@@ -2506,6 +2507,44 @@ async function startMicOnly() {
 
     document.body.appendChild(wrap);
     document.body.appendChild(fileInput);
+    // ===== HUD collapse / expand (bulletproof) =====
+let hudMini = document.querySelector(".mm-hud-toggle");
+if (!hudMini) {
+  hudMini = document.createElement("button");
+  hudMini.className = "mm-hud-toggle";
+  hudMini.type = "button";
+  hudMini.innerHTML = `<span class="mm-hud-toggle__dot"></span><span>HUD</span>`;
+  document.body.appendChild(hudMini);
+}
+
+function setHudCollapsed(collapsed) {
+  // ocultar/mostrar HUD con inline style (gana a cualquier CSS)
+  wrap.style.display = collapsed ? "none" : "flex";
+  hudMini.style.display = collapsed ? "inline-flex" : "none";
+  localStorage.setItem("mm_hud_collapsed", collapsed ? "1" : "0");
+}
+
+function toggleHudCollapsed() {
+  const isCollapsed = wrap.style.display === "none";
+  setHudCollapsed(!isCollapsed);
+}
+
+// Click mini: reabrir
+hudMini.onclick = () => setHudCollapsed(false);
+
+// Click botón HUD (el primero)
+const hudBtn = wrap.querySelector('[data-act="hud"]');
+if (hudBtn) {
+  hudBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation(); // evita que el handler general lo procese doble
+    toggleHudCollapsed();
+  });
+}
+
+// Restore
+setHudCollapsed(localStorage.getItem("mm_hud_collapsed") === "1");
+
 
     wrap.addEventListener("click", async (e) => {
       const b = e.target.closest("button");
@@ -2524,6 +2563,7 @@ async function startMicOnly() {
       if (act === "stopscr") return stopScreenOnly().catch(()=>{});
       if (act === "stopcam") return stopCameraOnly().catch(()=>{});
       if (act === "swap") return swapSendVideo().catch(()=>{});
+      // if (act === "hud") return toggleHudCollapsed();
 
       if (act === "dev") {
         try {
