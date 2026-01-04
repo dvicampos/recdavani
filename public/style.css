@@ -1,3 +1,4 @@
+/* style.css */
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
@@ -8,9 +9,12 @@ body{
   line-height:1.35;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 a{color:inherit}
 img,video{max-width:100%}
+::selection{background: rgba(31,107,255,.28)}
+:focus-visible{outline: 2px solid rgba(57,184,255,.55); outline-offset: 2px}
 
 /* ===================== TOKENS ===================== */
 :root{
@@ -18,15 +22,15 @@ img,video{max-width:100%}
   --r2: 18px;
   --r3: 999px;
 
-  --pad: 14px;
-  --pad2: 18px;
-  --gap: 14px;
+  --pad: clamp(12px, 2vw, 16px);
+  --pad2: clamp(14px, 2.2vw, 18px);
+  --gap: clamp(12px, 2vw, 16px);
 
-  /* solid layers */
   --bg: #070A0F;
-  --panel: #0B1018;     /* cards */
-  --panel2:#0E1522;     /* headers */
-  --panel3:#0A0F18;     /* subtle */
+  --panel: #0B1018;
+  --panel2:#0E1522;
+  --panel3:#0A0F18;
+
   --stroke: rgba(255,255,255,.10);
   --stroke2: rgba(255,255,255,.16);
 
@@ -37,11 +41,10 @@ img,video{max-width:100%}
   --shadow: 0 10px 26px rgba(0,0,0,.40);
   --shadow2: 0 18px 60px rgba(0,0,0,.55);
 
-  --blue:#1F6BFF;       /* azul sólido */
-  --blue2:#39B8FF;      /* azul claro */
-  --gold:#C9A227;       /* dorado */
-  --gold2:#E2C86A;      /* dorado suave */
-
+  --blue:#1F6BFF;
+  --blue2:#39B8FF;
+  --gold:#C9A227;
+  --gold2:#E2C86A;
   --danger:#ff4d4d;
 
   --max: 1200px;
@@ -52,10 +55,11 @@ img,video{max-width:100%}
   position:fixed; inset:0;
   z-index:-2;
   overflow:hidden;
-  background: radial-gradient(900px 520px at 12% 0%, rgba(31,107,255,.16), transparent 55%),
-              radial-gradient(780px 460px at 90% 18%, rgba(57,184,255,.10), transparent 55%),
-              radial-gradient(900px 520px at 62% 100%, rgba(201,162,39,.10), transparent 60%),
-              linear-gradient(180deg, #070A0F 0%, #05070B 100%);
+  background:
+    radial-gradient(900px 520px at 12% 0%, rgba(31,107,255,.16), transparent 55%),
+    radial-gradient(780px 460px at 90% 18%, rgba(57,184,255,.10), transparent 55%),
+    radial-gradient(900px 520px at 62% 100%, rgba(201,162,39,.10), transparent 60%),
+    linear-gradient(180deg, #070A0F 0%, #05070B 100%);
 }
 .bg::after{
   content:"";
@@ -75,21 +79,21 @@ img,video{max-width:100%}
   pointer-events:none;
 }
 
-/* ===================== LAYOUT ===================== */
+/* ===================== CONTAINERS ===================== */
 .topbar, .app{
   max-width: var(--max);
   margin: 0 auto;
-  padding-left: 16px;
-  padding-right: 16px;
+  padding-left: clamp(12px, 2.2vw, 16px);
+  padding-right: clamp(12px, 2.2vw, 16px);
 }
 
-/* Topbar (más compacto + sólido) */
+/* ===================== TOPBAR ===================== */
 .topbar{
   position: sticky;
   top: 0;
   z-index: 30;
-  padding: 14px 0 12px;
 
+  padding: 14px 0 12px;
   background: rgba(7,10,15,.88);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -116,7 +120,6 @@ img,video{max-width:100%}
   border-radius: 12px;
   font-weight: 950;
   letter-spacing:.5px;
-
   background: linear-gradient(135deg, rgba(31,107,255,.95), rgba(57,184,255,.70));
   box-shadow: 0 10px 30px rgba(31,107,255,.18), inset 0 0 0 1px rgba(255,255,255,.12);
 }
@@ -148,7 +151,7 @@ img,video{max-width:100%}
   text-transform: uppercase;
 }
 .roombar__input{
-  width: 190px;
+  width: min(240px, 42vw);
   border: 0;
   outline: none;
   background: transparent;
@@ -158,7 +161,7 @@ img,video{max-width:100%}
 }
 .roombar__input::placeholder{color: rgba(255,255,255,.38)}
 
-/* Buttons (más “flat” minimal) */
+/* Buttons */
 .btn{
   border: 1px solid rgba(255,255,255,.12);
   background: rgba(255,255,255,.05);
@@ -168,6 +171,7 @@ img,video{max-width:100%}
   cursor:pointer;
   display:inline-flex;
   align-items:center;
+  justify-content:center;
   gap: 8px;
   font-weight: 900;
   font-size: 13px;
@@ -175,13 +179,11 @@ img,video{max-width:100%}
   box-shadow: 0 10px 25px rgba(0,0,0,.22);
   transition: transform .12s ease, background .12s ease, border-color .12s ease, filter .12s ease;
   user-select:none;
+  white-space: nowrap;
 }
 .btn:hover{transform: translateY(-1px); background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.18)}
 .btn:active{transform: translateY(0px) scale(.99)}
-.btn:focus-visible{
-  outline: 2px solid rgba(57,184,255,.55);
-  outline-offset: 2px;
-}
+.btn:focus-visible{outline: 2px solid rgba(57,184,255,.55); outline-offset: 2px}
 .btn--primary{
   background: linear-gradient(135deg, rgba(31,107,255,.95), rgba(57,184,255,.80));
   border-color: rgba(255,255,255,.18);
@@ -189,13 +191,15 @@ img,video{max-width:100%}
 .btn--primary:hover{filter:saturate(1.05) contrast(1.04)}
 .btn--ghost{background: rgba(255,255,255,.04)}
 
-/* Main grid */
+/* ===================== APP LAYOUT ===================== */
 .app{
   padding-top: 16px;
   padding-bottom: 22px;
+
   display:grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr);
   gap: 16px;
+  align-items:start;
 }
 
 /* ===================== STAGE ===================== */
@@ -209,18 +213,18 @@ img,video{max-width:100%}
 }
 .title__h{
   margin:0;
-  font-size: 18px;
+  font-size: clamp(17px, 1.2vw + 12px, 20px);
   letter-spacing:.2px;
   font-weight: 950;
 }
 .title__p{
   margin:6px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: clamp(12.5px, .25vw + 12px, 13.5px);
   max-width: 72ch;
 }
 
-/* Status pill (limpio + dorado sutil) */
+/* Status pill */
 .statusPill{
   display:inline-flex;
   align-items:center;
@@ -298,7 +302,7 @@ img,video{max-width:100%}
   border-radius: 14px;
 }
 
-/* Dock */
+/* Dock (mejor: wrap y tamaños fluidos) */
 .dock{
   display:flex;
   gap: 10px;
@@ -320,6 +324,7 @@ img,video{max-width:100%}
   gap: 10px;
   box-shadow: 0 10px 22px rgba(0,0,0,.22);
   transition: transform .12s ease, background .12s ease, border-color .12s ease, filter .12s ease;
+  flex: 0 0 auto;
 }
 .dock__btn:hover{
   transform: translateY(-1px);
@@ -327,10 +332,7 @@ img,video{max-width:100%}
   border-color: rgba(255,255,255,.16);
 }
 .dock__btn:active{transform: translateY(0) scale(.99)}
-.dock__btn:focus-visible{
-  outline: 2px solid rgba(57,184,255,.50);
-  outline-offset: 2px;
-}
+.dock__btn:focus-visible{outline: 2px solid rgba(57,184,255,.50); outline-offset: 2px}
 .dock__i{font-size: 18px}
 .dock__t{font-size: 13px;font-weight: 950;letter-spacing:.2px}
 .dock__btn--ghost{background: rgba(0,0,0,.22)}
@@ -366,6 +368,13 @@ img,video{max-width:100%}
   border: 1px solid rgba(255,255,255,.10);
   box-shadow: var(--shadow2);
   overflow:hidden;
+
+  /* mejora: sticky en desktop sin romper mobile */
+  position: sticky;
+  top: 76px; /* topbar height aprox */
+  max-height: calc(100vh - 92px);
+  display:flex;
+  flex-direction: column;
 }
 .sidebar__header{
   padding: 12px 12px 10px;
@@ -375,14 +384,27 @@ img,video{max-width:100%}
 .sidebar__h{margin:0;font-size: 15px;letter-spacing:.2px;font-weight: 950}
 .sidebar__p{margin:6px 0 0;font-size: 12.5px;color: var(--muted)}
 
-/* Remote grid */
+/* ===================== REMOTE GRID (MEJORADO) ===================== */
+/* Clave:
+   - En sidebar angosto: cae a 1 columna automáticamente
+   - En mobile (sidebar full width): se convierte en 2-3 columnas
+   - Scroll más natural, cards “virtualizan” con content-visibility
+*/
 .remoteGrid{
   padding: 12px;
   display:grid;
-  grid-template-columns: 1fr;
   gap: 12px;
-  max-height: calc(100vh - 210px);
+
+  /* 🔥 responsive real */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+
   overflow:auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+
+  /* ocupa el resto del sidebar */
+  flex: 1;
+  min-height: 0;
 }
 .remoteGrid::-webkit-scrollbar{width:10px}
 .remoteGrid::-webkit-scrollbar-thumb{
@@ -399,6 +421,10 @@ img,video{max-width:100%}
   border: 1px solid rgba(255,255,255,.10);
   overflow:hidden;
   box-shadow: 0 12px 36px rgba(0,0,0,.30);
+
+  /* performance */
+  content-visibility: auto;
+  contain-intrinsic-size: 320px 220px;
 }
 .remoteHeader{
   display:flex;
@@ -445,7 +471,7 @@ img,video{max-width:100%}
 }
 .remoteActions button:active{transform: translateY(0) scale(.99)}
 
-/* Speaking + spotlight (azul / dorado) */
+/* Speaking + spotlight */
 .remoteCard.is-speaking{
   border-color: rgba(57,184,255,.30) !important;
   box-shadow: 0 0 0 1px rgba(57,184,255,.14), 0 18px 60px rgba(0,0,0,.55) !important;
@@ -463,14 +489,7 @@ img,video{max-width:100%}
   background: #000 !important;
 }
 
-/* Better focus */
-:focus-visible{
-  outline: 2px solid rgba(57,184,255,.55);
-  outline-offset: 2px;
-}
-::selection{background: rgba(31,107,255,.28)}
-
-/* ===================== WOW HUD (más compacto) ===================== */
+/* ===================== HUD ===================== */
 .mm-hud{
   position: fixed;
   left: 14px;
@@ -487,6 +506,14 @@ img,video{max-width:100%}
   box-shadow: 0 18px 60px rgba(0,0,0,.55);
   flex-wrap: wrap;
   max-width: calc(100vw - 28px);
+
+  transition: transform .18s ease, opacity .18s ease;
+  transform-origin: left bottom;
+}
+.mm-hud.is-collapsed{
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px) scale(.98);
 }
 .mm-hud__btn{
   border: 1px solid rgba(255,255,255,.10);
@@ -506,8 +533,12 @@ img,video{max-width:100%}
   border-color: rgba(57,184,255,.22);
 }
 .mm-hud__btn.is-off{opacity:.55}
+.mm-hud__btn.is-gold{
+  background: linear-gradient(135deg, rgba(201,162,39,.28), rgba(226,200,106,.16));
+  border-color: rgba(201,162,39,.22);
+}
 
-/* Captions overlay (más limpio) */
+/* Captions overlay */
 .mm-caption{
   position: absolute;
   left: 12px; right: 12px; bottom: 58px;
@@ -523,48 +554,58 @@ img,video{max-width:100%}
   pointer-events: none;
 }
 .mm-caption.show{opacity:1; transform: translateY(0)}
-.mm-caption__name{color: rgba(201,162,39,.95)} /* dorado para el nombre */
-
-/* PTT local feedback */
+.mm-caption__name{color: rgba(201,162,39,.95)}
 .tile.ptt-speaking{
   outline: 2px solid rgba(57,184,255,.55);
   outline-offset: 2px;
 }
 
-/* ===== Small improvement: local tile spacing ===== */
-.tile--local{ margin-bottom: 10%; }
-
 /* ===================== RESPONSIVE ===================== */
-@media (max-width: 980px){
+@media (max-width: 1040px){
   .app{grid-template-columns: 1fr}
-  .remoteGrid{max-height: none}
-  .roombar__input{width: 160px}
+  .sidebar{
+    position: static;
+    max-height: none;
+  }
+  /* en layout 1-col, remoteGrid puede ser 2 col si cabe */
+  .remoteGrid{
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
 }
 
-/* Mobile: topbar stacking + dock grid + HUD full width */
+@media (max-width: 720px){
+  .stage__header{flex-direction: column; align-items: stretch}
+  .statusPill{width: fit-content}
+  .remoteActions{grid-template-columns: 1fr}
+}
+
 @media (max-width: 520px){
   .topbar{padding: 12px 0 10px}
   .brand{min-width:auto}
-  .roombar{justify-content: stretch}
+
+  /* roombar full width + botones fluidos */
+  .roombar{
+    width: 100%;
+    justify-content: stretch;
+  }
   .chip{width: 100%}
   .roombar__input{width: 100%}
-  .btn{flex: 1; justify-content:center}
+  .btn{flex: 1}
 
-  .stage__header{flex-direction: column; align-items: stretch}
-  .statusPill{width: fit-content}
-
+  /* dock en grid 2x2 */
   .dock{
     display:grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
-  .dock__btn{
-    width: 100%;
-    justify-content:center;
-  }
+  .dock__btn{width: 100%; justify-content:center}
 
   .tile__video{aspect-ratio: 4 / 3}
-  .remoteActions{grid-template-columns: 1fr}
+
+  /* 🔥 remoteGrid: 2 columnas en móvil si cabe */
+  .remoteGrid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .mm-hud{
     left: 12px; right: 12px;
@@ -578,81 +619,152 @@ img,video{max-width:100%}
   }
 }
 
+/* Mobile pequeño: vuelve a 1 col para que no se aplaste */
+@media (max-width: 360px){
+  .remoteGrid{ grid-template-columns: 1fr; }
+}
+
 /* Motion reduce */
 @media (prefers-reduced-motion: reduce){
-  *{animation:none !important; transition:none !important}
-}
-.mm-hud__btn.is-gold{
-  background: linear-gradient(135deg, rgba(201,162,39,.28), rgba(226,200,106,.16));
-  border-color: rgba(201,162,39,.22);
-}
-/* ===== HUD hide/show ===== */
-.mm-hud{
-  transition: transform .18s ease, opacity .18s ease;
-  transform-origin: left bottom;
-}
-.mm-hud.is-collapsed{
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(12px) scale(.98);
+  *{animation:none !important; transition:none !important; scroll-behavior:auto !important}
 }
 
-/* mini button to reopen */
+/* ===================== HUD TOGGLE (CHIDO) ===================== */
 .mm-hud-toggle{
   position: fixed;
   left: 16px;
   bottom: 16px;
   z-index: 10000;
 
-  display: none;
+  display: none;            /* se enciende con .show */
   align-items: center;
-  gap: 8px;
-
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.22);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 18px 60px rgba(0,0,0,.45);
+  gap: 10px;
 
   padding: 10px 12px;
-  font: 900 13px ui-sans-serif, system-ui;
+  border-radius: 999px;
+
+  /* glass */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow:
+    0 18px 60px rgba(0,0,0,.50),
+    0 0 0 1px rgba(0,0,0,.20) inset;
+
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
   color: rgba(255,255,255,.92);
+  font: 900 13px ui-sans-serif, system-ui;
+  letter-spacing: .15px;
+
   cursor: pointer;
   user-select: none;
-}
-.mm-hud-toggle.show{ display: inline-flex; }
+  -webkit-tap-highlight-color: transparent;
 
+  transform: translateY(6px) scale(.98);
+  opacity: 0;
+  pointer-events: none;
+
+  transition:
+    opacity .18s ease,
+    transform .18s ease,
+    background .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease,
+    filter .18s ease;
+}
+
+/* visible */
+.mm-hud-toggle.show{
+  display: inline-flex;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+/* dot con glow pro */
 .mm-hud-toggle__dot{
-  width: 10px; height: 10px; border-radius: 999px;
-  background: linear-gradient(135deg, rgba(33,212,253,.9), rgba(124,92,255,.75));
-  box-shadow: 0 0 0 4px rgba(33,212,253,.14);
-}
-
-@media (max-width:520px){
-  .mm-hud-toggle{ left: 12px; bottom: 12px; }
-}
-.mm-hud-toggle{
-  position: fixed;
-  left: 16px;
-  bottom: 16px;
-  z-index: 10000;
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.22);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 18px 60px rgba(0,0,0,.45);
-  color: rgba(255,255,255,.92);
-  font: 900 13px ui-sans-serif, system-ui;
-  cursor: pointer;
+
+  background: linear-gradient(135deg, rgba(31,107,255,.95), rgba(57,184,255,.80));
+  box-shadow:
+    0 0 0 4px rgba(31,107,255,.14),
+    0 10px 26px rgba(31,107,255,.20);
+
+  flex: 0 0 auto;
 }
-.mm-hud-toggle__dot{
-  width: 10px; height: 10px; border-radius: 999px;
-  background: linear-gradient(135deg, rgba(33,212,253,.9), rgba(124,92,255,.75));
-  box-shadow: 0 0 0 4px rgba(33,212,253,.14);
+
+/* hover (desktop) */
+@media (hover:hover){
+  .mm-hud-toggle:hover{
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.05));
+    border-color: rgba(255,255,255,.18);
+    box-shadow:
+      0 22px 70px rgba(0,0,0,.58),
+      0 0 0 1px rgba(255,255,255,.08) inset,
+      0 0 0 6px rgba(57,184,255,.08);
+    transform: translateY(-1px) scale(1.01);
+    filter: saturate(1.05);
+  }
+}
+
+/* active (tap/click) */
+.mm-hud-toggle:active{
+  transform: translateY(0) scale(.98);
+  box-shadow:
+    0 14px 46px rgba(0,0,0,.45),
+    0 0 0 1px rgba(255,255,255,.06) inset;
+}
+
+/* focus accesible */
+.mm-hud-toggle:focus-visible{
+  outline: 2px solid rgba(57,184,255,.55);
+  outline-offset: 3px;
+}
+
+/* mini shimmer / pulse opcional (se ve muy pro) */
+.mm-hud-toggle::after{
+  content:"";
+  position:absolute;
+  inset: -2px;
+  border-radius: 999px;
+  pointer-events:none;
+
+  background: radial-gradient(220px 40px at 20% 0%, rgba(57,184,255,.18), transparent 60%);
+  opacity: .65;
+
+  mask: linear-gradient(#000,#000);
+  filter: blur(.2px);
+}
+
+/* si quieres estado "gold" (por ejemplo cuando hay spotlight) */
+.mm-hud-toggle.is-gold .mm-hud-toggle__dot{
+  background: linear-gradient(135deg, rgba(201,162,39,.95), rgba(226,200,106,.78));
+  box-shadow:
+    0 0 0 4px rgba(201,162,39,.14),
+    0 10px 26px rgba(201,162,39,.18);
+}
+.mm-hud-toggle.is-gold{
+  box-shadow:
+    0 18px 60px rgba(0,0,0,.50),
+    0 0 0 1px rgba(0,0,0,.20) inset,
+    0 0 0 6px rgba(201,162,39,.08);
+}
+
+/* responsive + safe areas */
+@media (max-width:520px){
+  .mm-hud-toggle{
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    padding: 10px 12px;
+  }
+}
+
+/* reduce motion */
+@media (prefers-reduced-motion: reduce){
+  .mm-hud-toggle{ transition:none !important; }
 }
